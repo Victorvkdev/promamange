@@ -72,11 +72,13 @@ export function Auth() {
 
   const handleGoogleLogin = async () => {
     try {
-      const response = await fetch('/api/auth/google/url');
-      if (!response.ok) throw new Error('Failed to get auth URL');
-      const { url } = await response.json();
-      
-      window.open(url, 'oauth_popup', 'width=600,height=700');
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin // Isso garante que o Google devolva o usuário para a sua URL da Vercel
+        }
+      });
+      if (error) throw error;
     } catch (error) {
       console.error('OAuth error:', error);
       setMessage({ type: 'error', text: 'Falha ao iniciar login com Google. Tente novamente.' });
