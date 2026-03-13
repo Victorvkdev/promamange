@@ -131,7 +131,7 @@ export function Career() {
   const lang = userStats.language || 'pt';
   const t = translations[lang];
 
-  const [salary, setSalary] = useState(5000);
+  const [salary, setSalary] = useState(0);
   const [selectedCountry, setSelectedCountry] = useState('BR');
   
   const marketAverages: Record<string, number> = {
@@ -144,17 +144,11 @@ export function Career() {
 
   const marketAverage = marketAverages[selectedCountry] || 6500;
 
-  const [skills, setSkills] = useState([
-    { id: '1', name: 'Inglês', level: 'B1', type: 'language' },
-    { id: '2', name: 'React', level: 'Avançado', type: 'skill' }
-  ]);
+  const [skills, setSkills] = useState([]);
   const [isAddingSkill, setIsAddingSkill] = useState(false);
   const [newSkill, setNewSkill] = useState({ name: '', level: '', type: 'skill' });
   
-  const [achievements, setAchievements] = useState([
-    { id: 1, title: 'Promoção para Pleno', date: '2023-08-15', type: 'promotion' },
-    { id: 2, title: 'Aumento de 15%', date: '2024-01-10', type: 'salary' }
-  ]);
+  const [achievements, setAchievements] = useState([]);
 
   const [isAddingAchievement, setIsAddingAchievement] = useState(false);
   const [editingAchievementId, setEditingAchievementId] = useState<number | null>(null);
