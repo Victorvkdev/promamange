@@ -42,6 +42,8 @@ export interface CreditCard {
   usedLimit?: number;
   closingDay: number;
   dueDay: number;
+  lastFourDigits?: string; 
+  favorite?: boolean;
 }
 
 export interface ProgressHistory {

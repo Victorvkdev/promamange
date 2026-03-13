@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../store/StoreContext';
 import { motion } from 'motion/react';
 import { Plus, Receipt, Calendar, Tag, CreditCard, CheckCircle2, FileDown, FileSpreadsheet, Trash2, Edit2, Copy, Star } from 'lucide-react';
@@ -14,7 +14,7 @@ const translations = {
     logExpense: 'Registrar Gasto',
     newEntry: 'Nova Entrada de Gasto',
     date: 'Data',
-    value: 'Valor (R$)',
+    value: 'Valor Total (R$)',
     description: 'Descrição',
     descPlaceholder: 'ex., Supermercado',
     category: 'Categoria',
@@ -69,7 +69,7 @@ const translations = {
     logExpense: 'Log Expense',
     newEntry: 'New Expense Entry',
     date: 'Date',
-    value: 'Value (R$)',
+    value: 'Total Value (R$)',
     description: 'Description',
     descPlaceholder: 'e.g., Groceries',
     category: 'Category',
@@ -124,7 +124,7 @@ const translations = {
     logExpense: 'Registrar Gasto',
     newEntry: 'Nueva Entrada de Gasto',
     date: 'Fecha',
-    value: 'Valor (R$)',
+    value: 'Valor Total (R$)',
     description: 'Descripción',
     descPlaceholder: 'ej., Supermercado',
     category: 'Categoría',
@@ -184,6 +184,9 @@ export function Expenses() {
   const t = translations[lang];
   const navigate = useNavigate();
 
+  // Pega o ID do cartão favorito para preencher automaticamente
+  const favoriteCardId = creditCards.find(c => c.favorite)?.id || '';
+
   const [newExpense, setNewExpense] = useState({
     date: new Date().toISOString().split('T')[0],
     value: '',
@@ -193,8 +196,15 @@ export function Expenses() {
     paymentMethod: 'credit' as 'credit' | 'debit' | 'cash',
     installments: 1,
     status: 'paid' as const,
-    cardId: ''
+    cardId: favoriteCardId // Inicializa com o favorito
   });
+
+  // Atualiza o estado caso o usuário mude o favorito depois de abrir a tela
+  useEffect(() => {
+    if (!editingId && newExpense.paymentMethod === 'credit' && !newExpense.cardId) {
+      setNewExpense(prev => ({ ...prev, cardId: favoriteCardId }));
+    }
+  }, [favoriteCardId, newExpense.paymentMethod, editingId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -214,13 +224,15 @@ export function Expenses() {
     const expenseData = {
       ...newExpense,
       value: parseFloat(newExpense.value),
-      cardId: newExpense.paymentMethod === 'credit' ? newExpense.cardId : undefined
+      cardId: newExpense.paymentMethod === 'credit' ? newExpense.cardId : undefined,
+      // Se for crédito, entra como pendente até a fatura ser paga
+      status: newExpense.paymentMethod === 'credit' ? 'pending' : 'paid'
     };
 
     if (editingId) {
-      updateExpense(editingId, expenseData);
+      updateExpense(editingId, expenseData as any);
     } else {
-      addExpense(expenseData);
+      addExpense(expenseData as any);
     }
     
     handleCancel();
@@ -238,7 +250,7 @@ export function Expenses() {
       paymentMethod: 'credit',
       installments: 1,
       status: 'paid',
-      cardId: ''
+      cardId: favoriteCardId // Reseta com o favorito
     });
   };
 
@@ -371,7 +383,7 @@ export function Expenses() {
                   paymentMethod: 'credit',
                   installments: 1,
                   status: 'paid',
-                  cardId: ''
+                  cardId: favoriteCardId
                 });
               }
             }}
@@ -463,23 +475,6 @@ export function Expenses() {
 
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
-                <CreditCard className="w-4 h-4" /> {t.account}
-              </label>
-              <select
-                value={newExpense.account}
-                onChange={e => setNewExpense({...newExpense, account: e.target.value})}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all appearance-none"
-              >
-                <option value={t.accounts.bradesco}>{t.accounts.bradesco}</option>
-                <option value={t.accounts.nubank}>{t.accounts.nubank}</option>
-                <option value={t.accounts.inter}>{t.accounts.inter}</option>
-                <option value={t.accounts.picpay}>{t.accounts.picpay}</option>
-                <option value={t.accounts.cash}>{t.accounts.cash}</option>
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
                 <CreditCard className="w-4 h-4" /> {t.paymentMethod}
               </label>
               <select
@@ -508,7 +503,9 @@ export function Expenses() {
                     >
                       <option value="" disabled>{t.selectCard}</option>
                       {creditCards.map(card => (
-                        <option key={card.id} value={card.id}>{card.name} (Final {card.lastFourDigits})</option>
+                        <option key={card.id} value={card.id}>
+                          {card.name} {card.lastFourDigits ? `(Final ${card.lastFourDigits})` : ''} {card.favorite ? '★' : ''}
+                        </option>
                       ))}
                     </select>
                   ) : (
@@ -535,9 +532,34 @@ export function Expenses() {
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all"
                     required
                   />
+                  {newExpense.installments > 1 && newExpense.value && (
+                    <p className="text-xs text-violet-400 font-medium mt-1">
+                      {newExpense.installments}x de R$ {(parseFloat(newExpense.value) / newExpense.installments).toFixed(2)}
+                    </p>
+                  )}
                 </div>
               </>
             )}
+
+            {newExpense.paymentMethod !== 'credit' && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                  <CreditCard className="w-4 h-4" /> {t.account}
+                </label>
+                <select
+                  value={newExpense.account}
+                  onChange={e => setNewExpense({...newExpense, account: e.target.value})}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all appearance-none"
+                >
+                  <option value={t.accounts.bradesco}>{t.accounts.bradesco}</option>
+                  <option value={t.accounts.nubank}>{t.accounts.nubank}</option>
+                  <option value={t.accounts.inter}>{t.accounts.inter}</option>
+                  <option value={t.accounts.picpay}>{t.accounts.picpay}</option>
+                  <option value={t.accounts.cash}>{t.accounts.cash}</option>
+                </select>
+              </div>
+            )}
+
           </div>
 
           <div className="mt-6 flex justify-end gap-4 relative z-10">
@@ -573,71 +595,87 @@ export function Expenses() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/50">
-              {filteredExpenses.map((expense) => (
-                <tr key={expense.id} className="hover:bg-zinc-800/30 transition-colors group">
-                  <td className="p-4 text-zinc-300 font-mono text-sm">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => toggleExpenseFavorite(expense.id)}
-                        className={`p-1 rounded-md transition-colors ${expense.favorite ? 'text-yellow-400 hover:bg-yellow-400/10' : 'text-zinc-600 hover:text-yellow-400/70 hover:bg-zinc-800'}`}
-                      >
-                        <Star className="w-4 h-4" fill={expense.favorite ? "currentColor" : "none"} />
-                      </button>
-                      {expense.date}
-                    </div>
-                  </td>
-                  <td className="p-4 font-medium text-zinc-100">
-                    {expense.description}
-                    {expense.paymentMethod === 'credit' && expense.installments && expense.installments > 1 && (
-                      <span className="ml-2 text-xs text-zinc-500">({expense.installments}x)</span>
-                    )}
-                  </td>
-                  <td className="p-4">
-                    <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700">
-                      {expense.category}
-                    </span>
-                  </td>
-                  <td className="p-4 text-zinc-400 text-sm">
-                    {expense.account}
-                    {expense.paymentMethod && (
-                      <span className="block text-xs text-zinc-500 mt-0.5">
-                        {(t.methods as any)[expense.paymentMethod]}
-                        {expense.paymentMethod === 'credit' && expense.cardId && (
-                          <> - {creditCards.find(c => c.id === expense.cardId)?.name || 'Cartão'}</>
-                        )}
+              {filteredExpenses.map((expense) => {
+                // Cálculo visual da parcela na tabela
+                const isInstallment = expense.paymentMethod === 'credit' && expense.installments && expense.installments > 1;
+                const displayValue = isInstallment ? (expense.value / expense.installments!) : expense.value;
+
+                return (
+                  <tr key={expense.id} className="hover:bg-zinc-800/30 transition-colors group">
+                    <td className="p-4 text-zinc-300 font-mono text-sm">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => toggleExpenseFavorite(expense.id)}
+                          className={`p-1 rounded-md transition-colors ${expense.favorite ? 'text-yellow-400 hover:bg-yellow-400/10' : 'text-zinc-600 hover:text-yellow-400/70 hover:bg-zinc-800'}`}
+                        >
+                          <Star className="w-4 h-4" fill={expense.favorite ? "currentColor" : "none"} />
+                        </button>
+                        {expense.date}
+                      </div>
+                    </td>
+                    <td className="p-4 font-medium text-zinc-100">
+                      {expense.description}
+                      {expense.status === 'pending' && expense.paymentMethod === 'credit' && (
+                        <span className="ml-2 text-[10px] uppercase font-bold text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded border border-orange-400/20">Fatura Pendente</span>
+                      )}
+                    </td>
+                    <td className="p-4">
+                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700">
+                        {expense.category}
                       </span>
-                    )}
-                  </td>
-                  <td className="p-4 text-right font-mono font-bold text-red-400">
-                    -R$ {expense.value.toFixed(2)}
-                  </td>
-                  <td className="p-4 text-right">
-                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => handleCopy(expense.id)}
-                        className="p-2 text-zinc-400 hover:text-blue-400 hover:bg-blue-400/10 rounded-lg transition-colors"
-                        title="Duplicar"
-                      >
-                        <Copy className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleEdit(expense)}
-                        className="p-2 text-zinc-400 hover:text-violet-400 hover:bg-violet-400/10 rounded-lg transition-colors"
-                        title="Editar"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(expense.id)}
-                        className="p-2 text-zinc-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
-                        title={t.confirmDelete}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="p-4 text-zinc-400 text-sm">
+                      {expense.paymentMethod === 'credit' ? (
+                        <>
+                          {(t.methods as any)[expense.paymentMethod]}
+                          {expense.cardId && (
+                            <span className="block text-xs text-zinc-500 mt-0.5">
+                              {creditCards.find(c => c.id === expense.cardId)?.name || 'Cartão'}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        expense.account
+                      )}
+                    </td>
+                    <td className="p-4 text-right font-mono">
+                      <div className="text-red-400 font-bold">
+                        -R$ {displayValue.toFixed(2)}
+                      </div>
+                      {isInstallment && (
+                        <div className="text-xs text-zinc-500 mt-0.5">
+                          {expense.installments}x (Total: R$ {expense.value.toFixed(2)})
+                        </div>
+                      )}
+                    </td>
+                    <td className="p-4 text-right">
+                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => handleCopy(expense.id)}
+                          className="p-2 text-zinc-400 hover:text-blue-400 hover:bg-blue-400/10 rounded-lg transition-colors"
+                          title="Duplicar"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleEdit(expense)}
+                          className="p-2 text-zinc-400 hover:text-violet-400 hover:bg-violet-400/10 rounded-lg transition-colors"
+                          title="Editar"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(expense.id)}
+                          className="p-2 text-zinc-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+                          title={t.confirmDelete}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
               {filteredExpenses.length === 0 && (
                 <tr>
                   <td colSpan={6} className="p-8 text-center text-zinc-500">
