@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useStore } from '../store/StoreContext';
 import { motion } from 'motion/react';
-import { Swords, ShieldAlert, Zap, Trophy } from 'lucide-react';
+import { Swords, ShieldAlert, Zap, Trophy, TrendingUp, Calendar } from 'lucide-react';
 
 const translations = {
   pt: {
@@ -13,9 +13,13 @@ const translations = {
     progressBar: 'Barra de Progresso',
     stepsRemaining: 'etapas restantes',
     totalValue: 'Valor Total',
+    paidValue: 'Valor Pago',
     stepValue: 'Valor da Etapa',
     achievedBtn: 'Alcançado',
-    completeStep: 'Completar Etapa'
+    completeStep: 'Adicionar Progresso',
+    estimatedTime: 'Tempo Estimado',
+    months: 'meses',
+    amountToAdd: 'Valor a adicionar'
   },
   en: {
     title: 'Major Goals',
@@ -26,9 +30,13 @@ const translations = {
     progressBar: 'Progress Bar',
     stepsRemaining: 'steps remaining',
     totalValue: 'Total Value',
+    paidValue: 'Paid Value',
     stepValue: 'Step Value',
     achievedBtn: 'Achieved',
-    completeStep: 'Complete Step'
+    completeStep: 'Add Progress',
+    estimatedTime: 'Estimated Time',
+    months: 'months',
+    amountToAdd: 'Amount to add'
   },
   es: {
     title: 'Metas Principales',
@@ -39,16 +47,58 @@ const translations = {
     progressBar: 'Barra de Progreso',
     stepsRemaining: 'pasos restantes',
     totalValue: 'Valor Total',
+    paidValue: 'Valor Pagado',
     stepValue: 'Valor del Paso',
     achievedBtn: 'Alcanzado',
-    completeStep: 'Completar Paso'
+    completeStep: 'Añadir Progreso',
+    estimatedTime: 'Tiempo Estimado',
+    months: 'meses',
+    amountToAdd: 'Cantidad a añadir'
   }
 };
 
 export function MajorGoals() {
   const { majorGoals, payGoalStep, userStats } = useStore();
   const lang = userStats.language || 'pt';
-  const t = translations[lang];
+  const t = translations[lang as keyof typeof translations];
+  const [paymentAmounts, setPaymentAmounts] = useState<Record<string, string>>({});
+
+  const calculateEstimatedMonths = (goal: any) => {
+    if (!goal.history || goal.history.length === 0) return null;
+    
+    // Group history by month
+    const monthlyTotals: Record<string, number> = {};
+    goal.history.forEach((entry: any) => {
+      const monthYear = entry.date.substring(0, 7); // YYYY-MM
+      monthlyTotals[monthYear] = (monthlyTotals[monthYear] || 0) + entry.value;
+    });
+
+    const months = Object.keys(monthlyTotals);
+    if (months.length === 0) return null;
+
+    const totalPaidInHistory = Object.values(monthlyTotals).reduce((sum, val) => sum + val, 0);
+    const averagePerMonth = totalPaidInHistory / months.length;
+
+    if (averagePerMonth <= 0) return null;
+
+    const remainingValue = goal.totalValue - (goal.paidValue || 0);
+    if (remainingValue <= 0) return 0;
+
+    return Math.ceil(remainingValue / averagePerMonth);
+  };
+
+  const handlePaymentChange = (goalId: string, value: string) => {
+    setPaymentAmounts(prev => ({ ...prev, [goalId]: value }));
+  };
+
+  const handlePay = (goalId: string, defaultStepValue: number) => {
+    const amountStr = paymentAmounts[goalId];
+    const amount = amountStr ? parseFloat(amountStr) : defaultStepValue;
+    if (isNaN(amount) || amount <= 0) return;
+    
+    payGoalStep(goalId, amount);
+    setPaymentAmounts(prev => ({ ...prev, [goalId]: '' }));
+  };
 
   return (
     <motion.div
@@ -68,8 +118,10 @@ export function MajorGoals() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {majorGoals.map((goal) => {
-          const isDefeated = goal.completedSteps >= goal.totalSteps;
-          const hpPercent = isDefeated ? 0 : 100 - ((goal.completedSteps / goal.totalSteps) * 100);
+          const isDefeated = goal.paidValue !== undefined ? goal.paidValue >= goal.totalValue : goal.completedSteps >= goal.totalSteps;
+          const currentPaid = goal.paidValue !== undefined ? goal.paidValue : (goal.completedSteps * goal.stepValue);
+          const hpPercent = isDefeated ? 0 : 100 - ((currentPaid / goal.totalValue) * 100);
+          const estimatedMonths = calculateEstimatedMonths(goal);
           
           return (
             <motion.div
@@ -107,7 +159,7 @@ export function MajorGoals() {
               <div className="relative z-10 mb-6">
                 <div className="flex justify-between text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">
                   <span>{t.progressBar}</span>
-                  <span className="font-mono">{goal.totalSteps - goal.completedSteps} {t.stepsRemaining}</span>
+                  <span className="font-mono">R$ {currentPaid.toFixed(2)} / R$ {goal.totalValue.toFixed(2)}</span>
                 </div>
                 <div className="w-full h-4 bg-zinc-950 rounded-full overflow-hidden border border-zinc-800">
                   <div 
@@ -121,17 +173,31 @@ export function MajorGoals() {
 
               <div className="relative z-10 grid grid-cols-2 gap-4 mb-6">
                 <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800/50">
-                  <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">{t.totalValue}</p>
-                  <p className="font-mono font-bold text-zinc-200">R$ {goal.totalValue.toFixed(2)}</p>
+                  <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1 flex items-center gap-1"><TrendingUp className="w-3 h-3"/> {t.paidValue}</p>
+                  <p className="font-mono font-bold text-zinc-200">R$ {currentPaid.toFixed(2)}</p>
                 </div>
                 <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800/50">
-                  <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">{t.stepValue}</p>
-                  <p className="font-mono font-bold text-zinc-200">R$ {goal.stepValue.toFixed(2)}</p>
+                  <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1 flex items-center gap-1"><Calendar className="w-3 h-3"/> {t.estimatedTime}</p>
+                  <p className="font-mono font-bold text-zinc-200">
+                    {estimatedMonths !== null ? `${estimatedMonths} ${t.months}` : '--'}
+                  </p>
                 </div>
               </div>
 
+              {!isDefeated && (
+                <div className="relative z-10 flex gap-2 mb-4">
+                  <input
+                    type="number"
+                    value={paymentAmounts[goal.id] !== undefined ? paymentAmounts[goal.id] : ''}
+                    onChange={(e) => handlePaymentChange(goal.id, e.target.value)}
+                    placeholder={`${t.amountToAdd} (R$ ${goal.stepValue.toFixed(2)})`}
+                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all font-mono"
+                  />
+                </div>
+              )}
+
               <button
-                onClick={() => payGoalStep(goal.id)}
+                onClick={() => handlePay(goal.id, goal.stepValue)}
                 disabled={isDefeated}
                 className={`relative z-10 w-full py-4 rounded-xl font-black uppercase tracking-widest flex items-center justify-center gap-2 ${userStats.optimizationMode ? '' : 'transition-all'} ${
                   isDefeated
@@ -147,7 +213,7 @@ export function MajorGoals() {
                 ) : (
                   <>
                     <Zap className="w-5 h-5" />
-                    {t.completeStep} (R$ {goal.stepValue.toFixed(2)})
+                    {t.completeStep}
                   </>
                 )}
               </button>

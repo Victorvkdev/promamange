@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useStore } from '../store/StoreContext';
 import { motion } from 'motion/react';
-import { Briefcase, TrendingUp, Award, Globe, Plus, CheckCircle2, Star, ChevronRight, Trash2, MapPin } from 'lucide-react';
+import { Briefcase, TrendingUp, Award, Globe, Plus, CheckCircle2, Star, ChevronRight, Trash2, MapPin, Edit2 } from 'lucide-react';
 
 const translations = {
   pt: {
@@ -157,14 +157,34 @@ export function Career() {
   ]);
 
   const [isAddingAchievement, setIsAddingAchievement] = useState(false);
+  const [editingAchievementId, setEditingAchievementId] = useState<number | null>(null);
   const [newAchievement, setNewAchievement] = useState({ title: '', date: new Date().toISOString().split('T')[0], type: 'promotion' });
 
   const handleAddAchievement = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAchievement.title) return;
-    setAchievements([{ ...newAchievement, id: Date.now() }, ...achievements]);
+    
+    if (editingAchievementId !== null) {
+      setAchievements(achievements.map(ach => ach.id === editingAchievementId ? { ...newAchievement, id: editingAchievementId } : ach));
+      setEditingAchievementId(null);
+    } else {
+      setAchievements([{ ...newAchievement, id: Date.now() }, ...achievements]);
+    }
+    
     setIsAddingAchievement(false);
     setNewAchievement({ title: '', date: new Date().toISOString().split('T')[0], type: 'promotion' });
+  };
+
+  const handleEditAchievement = (ach: any) => {
+    setNewAchievement({ title: ach.title, date: ach.date, type: ach.type });
+    setEditingAchievementId(ach.id);
+    setIsAddingAchievement(true);
+  };
+
+  const handleRemoveAchievement = (id: number) => {
+    if (window.confirm('Tem certeza que deseja remover esta conquista?')) {
+      setAchievements(achievements.filter(ach => ach.id !== id));
+    }
   };
 
   const handleAddSkill = (e: React.FormEvent) => {
@@ -384,7 +404,13 @@ export function Career() {
               {t.achievements}
             </h3>
             <button
-              onClick={() => setIsAddingAchievement(!isAddingAchievement)}
+              onClick={() => {
+                setIsAddingAchievement(!isAddingAchievement);
+                if (!isAddingAchievement) {
+                  setEditingAchievementId(null);
+                  setNewAchievement({ title: '', date: new Date().toISOString().split('T')[0], type: 'promotion' });
+                }
+              }}
               className="flex items-center gap-2 px-3 py-1.5 bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 rounded-lg transition-colors text-sm font-medium"
             >
               <Plus className="w-4 h-4" />
@@ -434,7 +460,7 @@ export function Career() {
 
           <div className="space-y-4">
             {achievements.map((ach) => (
-              <div key={ach.id} className="flex items-center gap-4 p-4 rounded-xl bg-zinc-950 border border-zinc-800/50 hover:border-zinc-700 transition-colors">
+              <div key={ach.id} className="group flex items-center gap-4 p-4 rounded-xl bg-zinc-950 border border-zinc-800/50 hover:border-zinc-700 transition-colors">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
                   ach.type === 'promotion' ? 'bg-orange-500/20 text-orange-400' :
                   ach.type === 'salary' ? 'bg-violet-500/20 text-violet-400' :
@@ -448,7 +474,20 @@ export function Career() {
                   <h4 className="font-bold text-zinc-200">{ach.title}</h4>
                   <p className="text-xs text-zinc-500">{ach.date}</p>
                 </div>
-                <ChevronRight className="w-5 h-5 text-zinc-600" />
+                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => handleEditAchievement(ach)}
+                    className="p-2 text-zinc-400 hover:text-violet-400 hover:bg-violet-400/10 rounded-lg transition-colors"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleRemoveAchievement(ach.id)}
+                    className="p-2 text-zinc-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>

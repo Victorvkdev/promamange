@@ -18,6 +18,7 @@ export interface UserStats {
   optimizationMode: boolean;
   language: 'pt' | 'en' | 'es';
   deviceId?: string;
+  avatar?: string;
 }
 
 export interface Expense {
@@ -30,14 +31,21 @@ export interface Expense {
   status: 'pending' | 'paid';
   paymentMethod?: 'credit' | 'debit' | 'cash';
   installments?: number;
+  cardId?: string;
 }
 
 export interface CreditCard {
   id: string;
   name: string;
   limit: number;
+  usedLimit?: number;
   closingDay: number;
   dueDay: number;
+}
+
+export interface ProgressHistory {
+  date: string;
+  value: number;
 }
 
 export interface MajorGoal {
@@ -49,6 +57,7 @@ export interface MajorGoal {
   stepValue: number;
   totalValue: number;
   paidValue: number;
+  history?: ProgressHistory[];
 }
 
 export interface Quest {
@@ -62,6 +71,9 @@ export interface Quest {
   rewardCoins: number;
   progress?: number;
   target?: number;
+  targetValue?: number;
+  currentValue?: number;
+  history?: ProgressHistory[];
   priority: 'low' | 'medium' | 'high';
   favorite: boolean;
 }
