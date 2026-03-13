@@ -47,6 +47,7 @@ const translations = {
       other: 'Outros'
     },
     accounts: {
+      bradesco: 'Bradesco',
       nubank: 'Nubank',
       inter: 'Banco Inter',
       picpay: 'PicPay',
@@ -101,6 +102,7 @@ const translations = {
       other: 'Other'
     },
     accounts: {
+      bradesco: 'Bradesco',
       nubank: 'Nubank',
       inter: 'Banco Inter',
       picpay: 'PicPay',
@@ -155,6 +157,7 @@ const translations = {
       other: 'Otros'
     },
     accounts: {
+      bradesco: 'Bradesco',
       nubank: 'Nubank',
       inter: 'Banco Inter',
       picpay: 'PicPay',
@@ -186,7 +189,7 @@ export function Expenses() {
     value: '',
     description: '',
     category: t.categories.food,
-    account: t.accounts.nubank,
+    account: t.accounts.bradesco,
     paymentMethod: 'credit' as 'credit' | 'debit' | 'cash',
     installments: 1,
     status: 'paid' as const,
@@ -231,7 +234,7 @@ export function Expenses() {
       value: '',
       description: '',
       category: t.categories.food,
-      account: t.accounts.nubank,
+      account: t.accounts.bradesco,
       paymentMethod: 'credit',
       installments: 1,
       status: 'paid',
@@ -364,7 +367,7 @@ export function Expenses() {
                   value: '',
                   description: '',
                   category: t.categories.food,
-                  account: t.accounts.nubank,
+                  account: t.accounts.bradesco,
                   paymentMethod: 'credit',
                   installments: 1,
                   status: 'paid',
@@ -467,6 +470,7 @@ export function Expenses() {
                 onChange={e => setNewExpense({...newExpense, account: e.target.value})}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all appearance-none"
               >
+                <option value={t.accounts.bradesco}>{t.accounts.bradesco}</option>
                 <option value={t.accounts.nubank}>{t.accounts.nubank}</option>
                 <option value={t.accounts.inter}>{t.accounts.inter}</option>
                 <option value={t.accounts.picpay}>{t.accounts.picpay}</option>
