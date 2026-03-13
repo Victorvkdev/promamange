@@ -55,13 +55,9 @@ const defaultStats: UserStats = {
 };
 
 const initialExpenses: Expense[] = [];
-
 const initialIncomes: Income[] = [];
-
 const initialGoals: MajorGoal[] = [];
-
 const initialQuests: Quest[] = [];
-
 const initialCreditCards: CreditCard[] = [];
 
 const initialChat: ChatMessage[] = [
@@ -147,10 +143,8 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
     }
   };
 
-  // Load from Supabase on mount
   useEffect(() => {
     if (!session?.user?.id) {
-      // Fallback to local storage if no session
       const savedStats = localStorage.getItem('promanage_v2_stats');
       if (savedStats) setUserStats(JSON.parse(savedStats));
       
@@ -187,7 +181,6 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
 
         const { data: stats } = await supabase.from('user_stats').select('*').eq('id', session.user.id).single();
         if (stats) {
-          // Always update the device ID to the current one. The old device will be logged out by the listener.
           if (stats.device_id !== currentDeviceId) {
              await supabase.from('user_stats').update({ device_id: currentDeviceId }).eq('id', session.user.id);
           }
@@ -209,11 +202,9 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
           setUserStats(loadedStats);
           checkStreak(loadedStats);
         } else {
-          // New user, set device ID
           setUserStats(prev => ({ ...prev, deviceId: currentDeviceId as string }));
         }
 
-        // Listen for device_id changes
         const channel = supabase.channel('user_stats_changes')
           .on(
             'postgres_changes',
@@ -296,7 +287,6 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
         }
       } catch (error) {
         console.error('Error loading data from Supabase, falling back to local storage:', error);
-        // Fallback to local storage on error (e.g., offline)
         const savedStats = localStorage.getItem('promanage_v2_stats');
         if (savedStats) setUserStats(JSON.parse(savedStats));
         
@@ -329,12 +319,10 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
     };
   }, [session]);
 
-  // Save to Supabase (or local storage) on change
   useEffect(() => {
-    if (!isLoaded) return; // Don't save before initial load
+    if (!isLoaded) return; 
 
     const saveToSupabase = async () => {
-      // Always save to local storage as a fallback/offline cache
       localStorage.setItem('promanage_v2_stats', JSON.stringify(userStats));
       localStorage.setItem('promanage_v2_expenses', JSON.stringify(expenses));
       localStorage.setItem('promanage_v2_incomes', JSON.stringify(incomes));
@@ -450,7 +438,7 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
         if (diffDays === 1) {
           newStreak += 1;
         } else if (diffDays > 1) {
-          newStreak = 1; // reset streak
+          newStreak = 1; 
         }
       } else {
         newStreak = 1;
@@ -481,7 +469,6 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
       if (newXp >= xpNeeded) {
         newLevel += 1;
         newXp -= xpNeeded;
-        // Level up bonus
         setTimeout(() => {
           addChatMessage({ role: 'ai', content: `${t.levelUp} ${newLevel} (${getRank(newLevel, lang)}). ${t.keepUp}` });
         }, 0);
@@ -501,14 +488,12 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
     const newExpense = { ...expense, id: crypto.randomUUID() };
     setExpenses(prev => [newExpense, ...prev]);
     
-    // Update credit card used limit if applicable
     if (expense.paymentMethod === 'credit' && expense.cardId) {
       setCreditCards(prev => prev.map(c => 
         c.id === expense.cardId ? { ...c, usedLimit: (c.usedLimit || 0) + expense.value } : c
       ));
     }
     
-    // Gamification hook: Logging expense
     const today = new Date().toISOString().split('T')[0];
     let xpReward = 10;
     const lang = userStats.language || 'pt';
@@ -516,7 +501,7 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
     let message = `${t.loggedExp} ${expense.description}. +10 XP.`;
     
     if (expense.date === today) {
-      xpReward *= 2; // Combo multiplier
+      xpReward *= 2; 
       message = `${t.comboExp} +20 XP.`;
     }
     
@@ -528,7 +513,6 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
     const oldExpense = expenses.find(e => e.id === id);
     if (!oldExpense) return;
 
-    // Handle credit card limit adjustments
     if (oldExpense.paymentMethod === 'credit' && oldExpense.cardId) {
       setCreditCards(prev => prev.map(c => 
         c.id === oldExpense.cardId ? { ...c, usedLimit: Math.max(0, (c.usedLimit || 0) - oldExpense.value) } : c
@@ -596,7 +580,6 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
         const historyEntry = { date: new Date().toISOString().split('T')[0], value: amount || goal.stepValue };
         const newHistory = [...(goal.history || []), historyEntry];
         
-        // Gamification hook: Critical hit / Goal progress
         const isDefeated = newPaid === goal.totalSteps || newPaidValue >= goal.totalValue;
         xpReward = 100;
         message = `${t.greatJob} ${(amount || goal.stepValue).toFixed(2)} ${t.towards} ${goal.title}.`;
@@ -708,30 +691,40 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
     }
   };
 
+  // ========== FUNÇÃO ATUALIZADA AQUI ==========
   const payCreditCardInvoice = (id: string, amount: number) => {
+    const card = creditCards.find(c => c.id === id);
+    if (!card) return;
+
+    // 1. Reduz o limite utilizado (usado) do cartão
     setCreditCards(prev => prev.map(c => {
       if (c.id === id) {
         const currentUsed = c.usedLimit || 0;
         const newUsed = Math.max(0, currentUsed - amount);
-        
-        // If paid more than used, add to expenses as "Outros não registrados"
-        if (amount > currentUsed) {
-          addExpense({
-            date: new Date().toISOString().split('T')[0],
-            description: `Pagamento excedente fatura ${c.name}`,
-            value: amount - currentUsed,
-            category: 'Outros',
-            account: c.name,
-            status: 'paid',
-            paymentMethod: 'cash'
-          });
-        }
-        
         return { ...c, usedLimit: newUsed };
       }
       return c;
     }));
+
+    // 2. Muda o status das despesas desse cartão que estavam pendentes para pagas
+    setExpenses(prev => prev.map(exp => {
+      if (exp.cardId === id && exp.status === 'pending') {
+        return { ...exp, status: 'paid' as const };
+      }
+      return exp;
+    }));
+
+    // 3. Recompensa Gamificada: Pagar a fatura gera XP!
+    const lang = userStats.language || 'pt';
+    addXp(50, 'Paid Credit Card Invoice');
+    addChatMessage({ 
+      role: 'ai', 
+      content: lang === 'pt' 
+        ? `Pagamento de fatura do cartão ${card.name} no valor de R$ ${amount.toFixed(2)} registrado! Limite liberado. +50 XP 💳` 
+        : `Invoice payment for ${card.name} of R$ ${amount.toFixed(2)} logged! Limit restored. +50 XP 💳` 
+    });
   };
+  // ============================================
 
   const toggleOptimizationMode = () => {
     setUserStats(prev => ({ ...prev, optimizationMode: !prev.optimizationMode }));
@@ -779,5 +772,3 @@ export const useStore = () => {
   }
   return context;
 };
-
-

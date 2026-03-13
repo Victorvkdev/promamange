@@ -1,7 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store/StoreContext';
 import { motion } from 'motion/react';
-import { CreditCard, Plus, Trash2, Calendar, DollarSign, FileUp, Loader2, Upload, X } from 'lucide-react';
+import { CreditCard, Plus, Trash2, Calendar, DollarSign, FileUp, Loader2, Upload, X, CheckCircle2 } from 'lucide-react';
 import { GoogleGenAI, Type } from '@google/genai';
 
 const translations = {
@@ -34,7 +34,12 @@ const translations = {
     uploadError: 'Erro ao analisar fatura. Tente novamente.',
     invoiceDetails: 'Detalhes da Fatura',
     close: 'Fechar',
-    noExpenses: 'Nenhum gasto registrado nesta fatura.'
+    noExpenses: 'Nenhum gasto registrado nesta fatura.',
+    undeterminedValue: 'Gastos Não Listados',
+    undeterminedDesc: 'Valor já utilizado no limite, mas que não está detalhado abaixo.',
+    invoiceQuestion: 'Qual o valor da sua fatura desse mês?',
+    amountToPay: 'Valor do Pagamento',
+    payButton: 'Efetuar Pagamento'
   },
   en: {
     title: 'My Cards',
@@ -65,7 +70,12 @@ const translations = {
     uploadError: 'Error analyzing invoice. Please try again.',
     invoiceDetails: 'Invoice Details',
     close: 'Close',
-    noExpenses: 'No expenses recorded on this invoice.'
+    noExpenses: 'No expenses recorded on this invoice.',
+    undeterminedValue: 'Unlisted Expenses',
+    undeterminedDesc: 'Value already used in the limit, but not detailed below.',
+    invoiceQuestion: 'What is your invoice amount this month?',
+    amountToPay: 'Payment Amount',
+    payButton: 'Make Payment'
   },
   es: {
     title: 'Mis Tarjetas',
@@ -96,20 +106,24 @@ const translations = {
     uploadError: 'Error al analizar la factura. Inténtalo de nuevo.',
     invoiceDetails: 'Detalles de la Factura',
     close: 'Cerrar',
-    noExpenses: 'No hay gastos registrados en esta factura.'
+    noExpenses: 'No hay gastos registrados en esta factura.',
+    undeterminedValue: 'Gastos No Listados',
+    undeterminedDesc: 'Valor ya utilizado en el límite, pero no detallado a continuación.',
+    invoiceQuestion: '¿Cuál es el monto de su factura este mes?',
+    amountToPay: 'Monto del Pago',
+    payButton: 'Efectuar Pago'
   }
 };
 
 export function CreditCards() {
-  // Adicionado 'expenses' ao destructuring do useStore
-  const { creditCards, addCreditCard, removeCreditCard, userStats, addExpense, expenses = [] } = useStore();
+  const { creditCards, addCreditCard, removeCreditCard, userStats, addExpense, expenses = [], payCardInvoice } = useStore();
   const [isAdding, setIsAdding] = useState(false);
   const [isUploading, setIsUploading] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   
-  // Estado para controlar o modal de fatura
   const [cardForModal, setCardForModal] = useState<any | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState<number>(0);
 
   const lang = userStats.language || 'pt';
   const t = translations[lang as keyof typeof translations];
@@ -126,13 +140,18 @@ export function CreditCards() {
   const [isExtractingInitial, setIsExtractingInitial] = useState(false);
   const initialFileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (cardForModal) {
+      setPaymentAmount(cardForModal.usedLimit || 0);
+    }
+  }, [cardForModal]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCard.name) return;
     
     const cardId = addCreditCard(newCard);
     
-    // Add extracted expenses
     extractedExpenses.forEach(exp => {
       addExpense({
         date: exp.date || new Date().toISOString().split('T')[0],
@@ -222,7 +241,7 @@ export function CreditCards() {
   };
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // Evita abrir o modal ao clicar em deletar
+    e.stopPropagation(); 
     if (window.confirm(t.confirmDelete)) {
       removeCreditCard(id);
     }
@@ -289,7 +308,7 @@ export function CreditCards() {
               paymentMethod: 'credit',
               installments: exp.installments || 1,
               status: 'pending',
-              cardId: selectedCardId // Vincula a despesa ao ID do cartão
+              cardId: selectedCardId 
             });
           });
           alert(t.uploadSuccess);
@@ -305,6 +324,24 @@ export function CreditCards() {
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
+
+  const handlePayInvoice = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cardForModal || paymentAmount <= 0) return;
+
+    if (payCardInvoice) {
+      payCardInvoice(cardForModal.id, paymentAmount);
+      alert('Pagamento registrado com sucesso!');
+      setCardForModal(null);
+    } else {
+      console.warn("Função payCardInvoice ainda não implementada no StoreContext.");
+      alert("Aviso: Função de pagamento ainda será conectada na próxima etapa.");
+    }
+  };
+
+  const cardExpenses = cardForModal ? expenses.filter((exp: any) => exp.cardId === cardForModal.id) : [];
+  const totalDetailedExpenses = cardExpenses.reduce((sum: number, exp: any) => sum + exp.value, 0);
+  const undeterminedValue = cardForModal ? Math.max(0, cardForModal.usedLimit - totalDetailedExpenses) : 0;
 
   return (
     <motion.div
@@ -326,7 +363,6 @@ export function CreditCards() {
         </button>
       </div>
 
-      {/* Formulário de Adição de Cartão mantido inalterado */}
       {isAdding && (
          <motion.form
          initial={{ opacity: 0, scale: 0.95 }}
@@ -522,9 +558,8 @@ export function CreditCards() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {creditCards.map(card => {
-          // Lógica da Barra de Progresso
           const usedLimitValue = card.usedLimit || 0;
-          const limitValue = card.limit || 1; // Previne divisão por zero
+          const limitValue = card.limit || 1; 
           const usedPercentage = Math.min((usedLimitValue / limitValue) * 100, 100);
           const availableLimit = Math.max(limitValue - usedLimitValue, 0);
           const isNearLimit = usedPercentage > 85;
@@ -533,7 +568,7 @@ export function CreditCards() {
             <div 
               key={card.id} 
               className="bg-zinc-900 border border-zinc-800 hover:border-violet-500/30 rounded-2xl p-6 relative group overflow-hidden cursor-pointer transition-colors"
-              onClick={() => setCardForModal(card)} // Abre o modal ao clicar no cartão
+              onClick={() => setCardForModal(card)} 
             >
               <div className="absolute top-0 left-0 w-1 h-full bg-violet-500" />
               <div className="flex justify-between items-start mb-4">
@@ -546,7 +581,7 @@ export function CreditCards() {
                   </div>
                 </div>
                 <button
-                  onClick={(e) => handleDelete(card.id, e)} // Passa o evento para o stopPropagation
+                  onClick={(e) => handleDelete(card.id, e)} 
                   className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
                   title={t.confirmDelete}
                 >
@@ -554,7 +589,6 @@ export function CreditCards() {
                 </button>
               </div>
 
-              {/* BARRA DE PROGRESSO AQUI */}
               <div className="mb-6">
                 <div className="flex justify-between text-xs font-medium mb-2">
                   <span className="text-zinc-400">
@@ -603,7 +637,7 @@ export function CreditCards() {
                 <button 
                   className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl transition-colors text-sm font-medium group/btn disabled:opacity-50"
                   onClick={(e) => {
-                    e.stopPropagation(); // Evita abrir o modal ao clicar no botão
+                    e.stopPropagation(); 
                     setSelectedCardId(card.id);
                     fileInputRef.current?.click();
                   }}
@@ -629,7 +663,6 @@ export function CreditCards() {
         </div>
       )}
 
-      {/* MODAL DE DETALHES DA FATURA */}
       {cardForModal && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
@@ -638,10 +671,9 @@ export function CreditCards() {
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden"
-            onClick={e => e.stopPropagation()} // Impede que o clique dentro do modal feche ele
+            className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden"
+            onClick={e => e.stopPropagation()} 
           >
-            {/* Header do Modal */}
             <div className="p-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/80">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-violet-500/10 rounded-lg text-violet-400">
@@ -661,42 +693,92 @@ export function CreditCards() {
               </button>
             </div>
 
-            {/* Corpo do Modal - Lista de Gastos */}
-            <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-zinc-950/50">
-              {expenses.filter((exp: any) => exp.cardId === cardForModal.id).length > 0 ? (
-                <div className="space-y-3">
-                  {expenses
-                    .filter((exp: any) => exp.cardId === cardForModal.id)
-                    .map((exp: any, index: number) => (
-                      <div key={index} className="flex justify-between items-center p-4 bg-zinc-900 border border-zinc-800/50 rounded-xl hover:border-zinc-700 transition-colors">
-                        <div>
-                          <p className="text-zinc-200 font-medium">{exp.description}</p>
-                          <p className="text-xs text-zinc-500 mt-1">{new Date(exp.date).toLocaleDateString(lang === 'pt' ? 'pt-BR' : 'en-US')}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-violet-400 font-bold">R$ {exp.value.toFixed(2)}</p>
-                          {exp.installments > 1 && (
-                            <p className="text-xs text-zinc-500 mt-1">{exp.installments}x de R$ {(exp.value / exp.installments).toFixed(2)}</p>
-                          )}
-                        </div>
-                      </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <DollarSign className="w-12 h-12 text-zinc-700 mx-auto mb-3" />
-                  <p className="text-zinc-500">{t.noExpenses}</p>
+            <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-zinc-950/50 space-y-6">
+              
+              {undeterminedValue > 0 && (
+                <div className="p-4 bg-zinc-900 border border-dashed border-zinc-700 rounded-xl flex justify-between items-center">
+                  <div>
+                    <h3 className="text-zinc-200 font-bold">{t.undeterminedValue}</h3>
+                    <p className="text-xs text-zinc-500 mt-1">{t.undeterminedDesc}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-zinc-300 font-bold">R$ {undeterminedValue.toFixed(2)}</p>
+                  </div>
                 </div>
               )}
+
+              <div>
+                <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-3">
+                  Gastos Listados
+                </h3>
+                {cardExpenses.length > 0 ? (
+                  <div className="space-y-3">
+                    {cardExpenses.map((exp: any, index: number) => (
+                        <div key={index} className="flex justify-between items-center p-4 bg-zinc-900 border border-zinc-800/50 rounded-xl hover:border-zinc-700 transition-colors">
+                          <div>
+                            <p className="text-zinc-200 font-medium">{exp.description}</p>
+                            <p className="text-xs text-zinc-500 mt-1">{new Date(exp.date).toLocaleDateString(lang === 'pt' ? 'pt-BR' : 'en-US')}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-violet-400 font-bold">R$ {exp.value.toFixed(2)}</p>
+                            {exp.installments > 1 && (
+                              <p className="text-xs text-zinc-500 mt-1">{exp.installments}x de R$ {(exp.value / exp.installments).toFixed(2)}</p>
+                            )}
+                          </div>
+                        </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 border border-zinc-800/50 rounded-xl bg-zinc-900/30">
+                    <p className="text-zinc-500">{t.noExpenses}</p>
+                  </div>
+                )}
+              </div>
             </div>
             
-            {/* Footer do Modal com Resumo */}
-            <div className="p-6 border-t border-zinc-800 bg-zinc-900">
-               <div className="flex justify-between items-center text-sm">
+            {/* --- NOVO BLOCO DE PAGAMENTO --- */}
+            <div className="p-6 border-t border-zinc-800 bg-zinc-900 space-y-4">
+               
+               <div className="flex justify-between items-center text-sm mb-2">
                  <span className="text-zinc-400 font-medium">{t.usedLimit}:</span>
                  <span className="text-xl font-bold text-zinc-100">R$ {cardForModal.usedLimit?.toFixed(2) || '0.00'}</span>
                </div>
+
+               <div className="bg-zinc-950 p-5 rounded-xl border border-zinc-800">
+                 <h3 className="text-sm font-bold text-zinc-200 mb-4">{t.invoiceQuestion}</h3>
+                 
+                 <form onSubmit={handlePayInvoice} className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+                   <div className="flex-1 w-full space-y-1">
+                     <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t.amountToPay}</label>
+                     <div className="relative">
+                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-bold">R$</span>
+                       <input 
+                         type="number" 
+                         step="0.01"
+                         min="0.01"
+                         max={cardForModal.usedLimit} 
+                         value={paymentAmount || ''}
+                         onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
+                         className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-9 pr-4 py-3 text-zinc-100 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all text-lg font-medium"
+                         required
+                         placeholder="0.00"
+                       />
+                     </div>
+                   </div>
+                   
+                   <button 
+                     type="submit"
+                     className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white rounded-lg font-bold transition-all h-[52px]"
+                   >
+                     <CheckCircle2 className="w-5 h-5" />
+                     {t.payButton}
+                   </button>
+                 </form>
+               </div>
+
             </div>
+            {/* ------------------------------- */}
+
           </motion.div>
         </div>
       )}
