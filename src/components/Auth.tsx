@@ -75,13 +75,13 @@ export function Auth() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin // Isso garante que o Google devolva o usuário para a sua URL da Vercel
+          redirectTo: window.location.origin
         }
       });
       if (error) throw error;
-    } catch (error) {
+    } catch (error: any) {
       console.error('OAuth error:', error);
-      setMessage({ type: 'error', text: 'Falha ao iniciar login com Google. Tente novamente.' });
+      setMessage({ type: 'error', text: error.message || 'Falha ao iniciar login com Google. Tente novamente.' });
     }
   };
 

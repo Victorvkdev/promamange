@@ -12,6 +12,7 @@ import { Expenses } from './pages/Expenses';
 import { MajorGoals } from './pages/MajorGoals';
 import { Planners } from './pages/Planners';
 import { Career } from './pages/Career';
+import { CreditCards } from './pages/CreditCards';
 import { Settings } from './pages/Settings';
 import { MotionWrapper } from './components/MotionWrapper';
 import { Auth } from './components/Auth';
@@ -65,6 +66,7 @@ export default function App() {
               <Route path="debts" element={<MajorGoals />} />
               <Route path="planners" element={<Planners />} />
               <Route path="career" element={<Career />} />
+              <Route path="cards" element={<CreditCards />} />
               <Route path="settings" element={<Settings />} />
             </Route>
           </Routes>

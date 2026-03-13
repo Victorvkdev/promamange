@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Receipt, Swords, Target, Settings, Briefcase } from 'lucide-react';
+import { LayoutDashboard, Receipt, Swords, Target, Settings, Briefcase, CreditCard } from 'lucide-react';
 import { useStore } from '../store/StoreContext';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -16,6 +16,7 @@ const translations = {
     goals: 'Metas',
     planners: 'Missões',
     career: 'Carreira',
+    cards: 'Cartões',
     settings: 'Ajustes',
   },
   en: {
@@ -24,6 +25,7 @@ const translations = {
     goals: 'Goals',
     planners: 'Quests',
     career: 'Career',
+    cards: 'Cards',
     settings: 'Settings',
   },
   es: {
@@ -32,6 +34,7 @@ const translations = {
     goals: 'Metas',
     planners: 'Misiones',
     career: 'Carrera',
+    cards: 'Tarjetas',
     settings: 'Ajustes',
   }
 };
@@ -47,6 +50,7 @@ export function MobileNav() {
     { icon: Swords, label: t.goals, path: '/debts' },
     { icon: Target, label: t.planners, path: '/planners' },
     { icon: Briefcase, label: t.career, path: '/career' },
+    { icon: CreditCard, label: t.cards, path: '/cards' },
     { icon: Settings, label: t.settings, path: '/settings' },
   ];
 

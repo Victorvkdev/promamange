@@ -88,6 +88,8 @@ export function AICoach() {
             description: { type: Type.STRING, description: 'Description of the expense (e.g., Coffee, Uber)' },
             value: { type: Type.NUMBER, description: 'The cost of the expense in BRL (e.g., 15.50)' },
             category: { type: Type.STRING, description: 'Category (Food, Transport, Utilities, Leisure, Health, Other)' },
+            paymentMethod: { type: Type.STRING, description: 'Payment method: credit, debit, or cash. Default is cash.' },
+            installments: { type: Type.NUMBER, description: 'Number of installments if credit card. Default is 1.' }
           },
           required: ['description', 'value', 'category'],
         },
@@ -124,6 +126,8 @@ export function AICoach() {
               value: args.value,
               category: args.category || 'Other',
               account: 'Cash',
+              paymentMethod: args.paymentMethod || 'cash',
+              installments: args.installments || 1,
               status: 'paid'
             });
             addChatMessage({ role: 'ai', content: `${t.logged}${args.value} ${t.for} ${args.description}. ${t.keepTracking}` });
@@ -156,8 +160,8 @@ export function AICoach() {
           >
             <div className="p-4 bg-zinc-950 border-b border-zinc-800 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-violet-500/20 flex items-center justify-center border border-violet-500/50">
-                  <Bot className="w-5 h-5 text-violet-400" />
+                <div className="w-10 h-10 rounded-full bg-violet-500/20 flex items-center justify-center border border-violet-500/50 overflow-hidden">
+                  <img src="https://api.dicebear.com/7.x/bottts/svg?seed=Navi&backgroundColor=transparent" alt="Navi" className="w-8 h-8" />
                 </div>
                 <div>
                   <h3 className="font-bold text-zinc-100">Navi</h3>
@@ -171,7 +175,12 @@ export function AICoach() {
 
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {chatHistory.map((msg) => (
-                <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start items-end gap-2'}`}>
+                  {msg.role === 'ai' && (
+                    <div className="w-6 h-6 rounded-full bg-violet-500/20 flex items-center justify-center shrink-0 overflow-hidden">
+                      <img src="https://api.dicebear.com/7.x/bottts/svg?seed=Navi&backgroundColor=transparent" alt="Navi" className="w-5 h-5" />
+                    </div>
+                  )}
                   <div className={`max-w-[80%] p-3 rounded-2xl ${
                     msg.role === 'user' 
                       ? 'bg-violet-600 text-white rounded-br-sm' 
@@ -182,7 +191,10 @@ export function AICoach() {
                 </div>
               ))}
               {isTyping && (
-                <div className="flex justify-start">
+                <div className="flex justify-start items-end gap-2">
+                  <div className="w-6 h-6 rounded-full bg-violet-500/20 flex items-center justify-center shrink-0 overflow-hidden">
+                    <img src="https://api.dicebear.com/7.x/bottts/svg?seed=Navi&backgroundColor=transparent" alt="Navi" className="w-5 h-5" />
+                  </div>
                   <div className="bg-zinc-800 text-zinc-400 p-3 rounded-2xl rounded-bl-sm border border-zinc-700/50 text-sm flex items-center gap-1">
                     <span className={userStats.optimizationMode ? '' : 'animate-bounce'}>.</span>
                     <span className={userStats.optimizationMode ? '' : 'animate-bounce delay-100'}>.</span>
