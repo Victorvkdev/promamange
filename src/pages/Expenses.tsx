@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useStore } from '../store/StoreContext';
 import { motion } from 'motion/react';
-import { Plus, Receipt, Calendar, Tag, CreditCard, CheckCircle2, FileDown, FileSpreadsheet, Trash2 } from 'lucide-react';
+import { Plus, Receipt, Calendar, Tag, CreditCard, CheckCircle2, FileDown, FileSpreadsheet, Trash2, Edit2, Copy, Star } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -30,6 +31,13 @@ const translations = {
       debit: 'Débito',
       cash: 'À Vista / Pix'
     },
+    creditCard: 'Cartão de Crédito',
+    selectCard: 'Selecione um cartão',
+    createCard: 'Criar cartão',
+    editEntry: 'Editar Gasto',
+    saveChanges: 'Salvar Alterações',
+    all: 'Todos',
+    favorites: 'Favoritos',
     categories: {
       food: 'Alimentação',
       transport: 'Transporte',
@@ -77,6 +85,13 @@ const translations = {
       debit: 'Debit',
       cash: 'Cash / Pix'
     },
+    creditCard: 'Credit Card',
+    selectCard: 'Select a card',
+    createCard: 'Create card',
+    editEntry: 'Edit Expense',
+    saveChanges: 'Save Changes',
+    all: 'All',
+    favorites: 'Favorites',
     categories: {
       food: 'Food',
       transport: 'Transport',
@@ -124,6 +139,13 @@ const translations = {
       debit: 'Débito',
       cash: 'Efectivo / Pix'
     },
+    creditCard: 'Tarjeta de Crédito',
+    selectCard: 'Seleccione una tarjeta',
+    createCard: 'Crear tarjeta',
+    editEntry: 'Editar Gasto',
+    saveChanges: 'Guardar Cambios',
+    all: 'Todos',
+    favorites: 'Favoritos',
     categories: {
       food: 'Alimentación',
       transport: 'Transporte',
@@ -151,10 +173,13 @@ const translations = {
 };
 
 export function Expenses() {
-  const { expenses, addExpense, removeExpense, userStats } = useStore();
+  const { expenses, addExpense, updateExpense, removeExpense, copyExpense, toggleExpenseFavorite, userStats, creditCards } = useStore();
   const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'all' | 'favorites'>('all');
   const lang = userStats.language || 'pt';
   const t = translations[lang];
+  const navigate = useNavigate();
 
   const [newExpense, setNewExpense] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -164,19 +189,43 @@ export function Expenses() {
     account: t.accounts.nubank,
     paymentMethod: 'credit' as 'credit' | 'debit' | 'cash',
     installments: 1,
-    status: 'paid' as const
+    status: 'paid' as const,
+    cardId: ''
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newExpense.value || !newExpense.description) return;
 
-    addExpense({
+    if (newExpense.paymentMethod === 'credit') {
+      if (creditCards.length === 0) {
+        alert('Você precisa criar um cartão de crédito primeiro.');
+        return;
+      }
+      if (!newExpense.cardId) {
+        alert(t.selectCard);
+        return;
+      }
+    }
+
+    const expenseData = {
       ...newExpense,
-      value: parseFloat(newExpense.value)
-    });
+      value: parseFloat(newExpense.value),
+      cardId: newExpense.paymentMethod === 'credit' ? newExpense.cardId : undefined
+    };
+
+    if (editingId) {
+      updateExpense(editingId, expenseData);
+    } else {
+      addExpense(expenseData);
+    }
     
+    handleCancel();
+  };
+
+  const handleCancel = () => {
     setIsAdding(false);
+    setEditingId(null);
     setNewExpense({
       date: new Date().toISOString().split('T')[0],
       value: '',
@@ -185,8 +234,29 @@ export function Expenses() {
       account: t.accounts.nubank,
       paymentMethod: 'credit',
       installments: 1,
-      status: 'paid'
+      status: 'paid',
+      cardId: ''
     });
+  };
+
+  const handleEdit = (expense: any) => {
+    setNewExpense({
+      date: expense.date,
+      value: expense.value.toString(),
+      description: expense.description,
+      category: expense.category,
+      account: expense.account,
+      paymentMethod: expense.paymentMethod || 'cash',
+      installments: expense.installments || 1,
+      status: expense.status || 'paid',
+      cardId: expense.cardId || ''
+    });
+    setEditingId(expense.id);
+    setIsAdding(true);
+  };
+
+  const handleCopy = (id: string) => {
+    copyExpense(id);
   };
 
   const handleDelete = (id: string) => {
@@ -230,6 +300,11 @@ export function Expenses() {
     XLSX.writeFile(wb, `expenses_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
+  const filteredExpenses = expenses.filter(expense => {
+    if (filter === 'favorites') return expense.favorite;
+    return true;
+  });
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -242,6 +317,29 @@ export function Expenses() {
           <p className="text-sm md:text-base text-zinc-400 mt-1">{t.subtitle}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <div className="flex bg-zinc-900 rounded-xl p-1 border border-zinc-800 w-full sm:w-auto">
+            <button
+              onClick={() => setFilter('all')}
+              className={`flex-1 sm:flex-none px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                filter === 'all' 
+                  ? 'bg-zinc-800 text-zinc-100' 
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              {t.all}
+            </button>
+            <button
+              onClick={() => setFilter('favorites')}
+              className={`flex-1 sm:flex-none px-4 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                filter === 'favorites' 
+                  ? 'bg-zinc-800 text-yellow-400' 
+                  : 'text-zinc-400 hover:text-yellow-400/70'
+              }`}
+            >
+              <Star className="w-4 h-4" fill={filter === 'favorites' ? "currentColor" : "none"} />
+              {t.favorites}
+            </button>
+          </div>
           <button
             onClick={exportToPDF}
             className={`flex items-center justify-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-medium rounded-xl transition-all w-full sm:w-auto`}
@@ -257,7 +355,23 @@ export function Expenses() {
             <span className="hidden sm:inline">{t.exportExcel}</span>
           </button>
           <button
-            onClick={() => setIsAdding(!isAdding)}
+            onClick={() => {
+              setIsAdding(!isAdding);
+              if (!isAdding) {
+                setEditingId(null);
+                setNewExpense({
+                  date: new Date().toISOString().split('T')[0],
+                  value: '',
+                  description: '',
+                  category: t.categories.food,
+                  account: t.accounts.nubank,
+                  paymentMethod: 'credit',
+                  installments: 1,
+                  status: 'paid',
+                  cardId: ''
+                });
+              }
+            }}
             className={`flex items-center justify-center gap-2 px-4 py-2 bg-violet-500 hover:bg-violet-400 text-zinc-950 font-bold rounded-xl transition-all hover:scale-105 active:scale-95 w-full sm:w-auto ${userStats.optimizationMode ? '' : 'shadow-[0_0_15px_rgba(139,92,246,0.3)]'}`}
           >
             <Plus className="w-5 h-5" />
@@ -280,7 +394,7 @@ export function Expenses() {
           
           <h3 className="text-xl font-bold text-violet-400 mb-6 flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5" />
-            {t.newEntry}
+            {editingId ? t.editEntry : t.newEntry}
           </h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
@@ -376,27 +490,56 @@ export function Expenses() {
             </div>
 
             {newExpense.paymentMethod === 'credit' && (
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
-                  <Calendar className="w-4 h-4" /> {t.installments}
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="48"
-                  value={newExpense.installments}
-                  onChange={e => setNewExpense({...newExpense, installments: parseInt(e.target.value) || 1})}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all"
-                  required
-                />
-              </div>
+              <>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                    <CreditCard className="w-4 h-4" /> {t.creditCard}
+                  </label>
+                  {creditCards.length > 0 ? (
+                    <select
+                      value={newExpense.cardId}
+                      onChange={e => setNewExpense({...newExpense, cardId: e.target.value})}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all appearance-none"
+                      required
+                    >
+                      <option value="" disabled>{t.selectCard}</option>
+                      {creditCards.map(card => (
+                        <option key={card.id} value={card.id}>{card.name} (Final {card.lastFourDigits})</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => navigate('/cards')}
+                      className="w-full bg-violet-500 hover:bg-violet-400 text-zinc-950 font-bold rounded-xl px-4 py-3 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Plus className="w-5 h-5" />
+                      {t.createCard}
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                    <Calendar className="w-4 h-4" /> {t.installments}
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="48"
+                    value={newExpense.installments}
+                    onChange={e => setNewExpense({...newExpense, installments: parseInt(e.target.value) || 1})}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all"
+                    required
+                  />
+                </div>
+              </>
             )}
           </div>
 
           <div className="mt-6 flex justify-end gap-4 relative z-10">
             <button
               type="button"
-              onClick={() => setIsAdding(false)}
+              onClick={handleCancel}
               className="px-6 py-3 rounded-xl font-bold text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
             >
               {t.cancel}
@@ -406,7 +549,7 @@ export function Expenses() {
               className={`px-6 py-3 bg-violet-500 hover:bg-violet-400 text-zinc-950 font-bold rounded-xl transition-all hover:scale-105 active:scale-95 flex items-center gap-2 ${userStats.optimizationMode ? '' : 'shadow-[0_0_15px_rgba(139,92,246,0.3)]'}`}
             >
               <CheckCircle2 className="w-5 h-5" />
-              {t.save}
+              {editingId ? t.saveChanges : t.save}
             </button>
           </div>
         </motion.form>
@@ -426,9 +569,19 @@ export function Expenses() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/50">
-              {expenses.map((expense) => (
+              {filteredExpenses.map((expense) => (
                 <tr key={expense.id} className="hover:bg-zinc-800/30 transition-colors group">
-                  <td className="p-4 text-zinc-300 font-mono text-sm">{expense.date}</td>
+                  <td className="p-4 text-zinc-300 font-mono text-sm">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => toggleExpenseFavorite(expense.id)}
+                        className={`p-1 rounded-md transition-colors ${expense.favorite ? 'text-yellow-400 hover:bg-yellow-400/10' : 'text-zinc-600 hover:text-yellow-400/70 hover:bg-zinc-800'}`}
+                      >
+                        <Star className="w-4 h-4" fill={expense.favorite ? "currentColor" : "none"} />
+                      </button>
+                      {expense.date}
+                    </div>
+                  </td>
                   <td className="p-4 font-medium text-zinc-100">
                     {expense.description}
                     {expense.paymentMethod === 'credit' && expense.installments && expense.installments > 1 && (
@@ -442,26 +595,49 @@ export function Expenses() {
                   </td>
                   <td className="p-4 text-zinc-400 text-sm">
                     {expense.account}
-                    {expense.paymentMethod && <span className="block text-xs text-zinc-500 mt-0.5">{(t.methods as any)[expense.paymentMethod]}</span>}
+                    {expense.paymentMethod && (
+                      <span className="block text-xs text-zinc-500 mt-0.5">
+                        {(t.methods as any)[expense.paymentMethod]}
+                        {expense.paymentMethod === 'credit' && expense.cardId && (
+                          <> - {creditCards.find(c => c.id === expense.cardId)?.name || 'Cartão'}</>
+                        )}
+                      </span>
+                    )}
                   </td>
                   <td className="p-4 text-right font-mono font-bold text-red-400">
                     -R$ {expense.value.toFixed(2)}
                   </td>
                   <td className="p-4 text-right">
-                    <button
-                      onClick={() => handleDelete(expense.id)}
-                      className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                      title={t.confirmDelete}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => handleCopy(expense.id)}
+                        className="p-2 text-zinc-400 hover:text-blue-400 hover:bg-blue-400/10 rounded-lg transition-colors"
+                        title="Duplicar"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleEdit(expense)}
+                        className="p-2 text-zinc-400 hover:text-violet-400 hover:bg-violet-400/10 rounded-lg transition-colors"
+                        title="Editar"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(expense.id)}
+                        className="p-2 text-zinc-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+                        title={t.confirmDelete}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
-              {expenses.length === 0 && (
+              {filteredExpenses.length === 0 && (
                 <tr>
                   <td colSpan={6} className="p-8 text-center text-zinc-500">
-                    {t.empty}
+                    {filter === 'favorites' ? 'Nenhum gasto favorito encontrado.' : t.empty}
                   </td>
                 </tr>
               )}

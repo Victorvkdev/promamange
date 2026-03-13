@@ -24,10 +24,11 @@ CREATE POLICY "Users can manage their own credit cards"
   FOR ALL
   USING (auth.uid() = user_id);
 
--- Add payment_method, installments, and card_id to expenses
+-- Add payment_method, installments, card_id, and favorite to expenses
 ALTER TABLE expenses ADD COLUMN IF NOT EXISTS payment_method TEXT;
 ALTER TABLE expenses ADD COLUMN IF NOT EXISTS installments INTEGER;
 ALTER TABLE expenses ADD COLUMN IF NOT EXISTS card_id UUID REFERENCES credit_cards(id) ON DELETE SET NULL;
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS favorite BOOLEAN DEFAULT false;
 
 -- Add target_value, current_value, and history to quests
 ALTER TABLE quests ADD COLUMN IF NOT EXISTS target_value DECIMAL(10, 2);
