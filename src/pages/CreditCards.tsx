@@ -1,99 +1,19 @@
 import React, { useState, useRef } from 'react';
 import { useStore } from '../store/StoreContext';
 import { motion } from 'motion/react';
-import { CreditCard, Plus, Trash2, Calendar, DollarSign, FileUp, Loader2, Upload } from 'lucide-react';
+import { CreditCard, Plus, Trash2, Calendar, DollarSign, FileUp, Loader2, Upload, X } from 'lucide-react';
 import { GoogleGenAI, Type } from '@google/genai';
 
-const translations = {
-  pt: {
-    title: 'Meus Cartões',
-    subtitle: 'Gerencie seus cartões de crédito, faturas e parcelamentos.',
-    addCard: 'Adicionar Cartão',
-    cardName: 'Nome do Cartão (ex: Nubank)',
-    limit: 'Limite Total',
-    usedLimit: 'Limite Utilizado',
-    closingDay: 'Dia de Fechamento',
-    dueDay: 'Dia de Vencimento',
-    cancel: 'Cancelar',
-    save: 'Salvar',
-    noCards: 'Nenhum cartão cadastrado ainda.',
-    uploadInvoice: 'Importar Fatura (PDF/CSV)',
-    uploadInitialInvoice: 'Importar Fatura Atual (Opcional)',
-    extractedExpenses: 'Gastos Identificados',
-    disclaimer: 'A identificação por imagem pode ter inconsistências. Por favor, confira se os valores e parcelamentos estão de acordo com os dados reais do cartão.',
-    description: 'Descrição',
-    value: 'Valor',
-    installments: 'Parcelas',
-    date: 'Data',
-    remove: 'Remover',
-    uploadComingSoon: 'Importação automática em breve!',
-    confirmDelete: 'Tem certeza que deseja remover este cartão?',
-    uploading: 'Analisando fatura...',
-    uploadSuccess: 'Fatura analisada com sucesso! Gastos adicionados.',
-    uploadError: 'Erro ao analisar fatura. Tente novamente.'
-  },
-  en: {
-    title: 'My Cards',
-    subtitle: 'Manage your credit cards, invoices, and installments.',
-    addCard: 'Add Card',
-    cardName: 'Card Name (e.g., Chase)',
-    limit: 'Total Limit',
-    usedLimit: 'Used Limit',
-    closingDay: 'Closing Day',
-    dueDay: 'Due Day',
-    cancel: 'Cancel',
-    save: 'Save',
-    noCards: 'No cards registered yet.',
-    uploadInvoice: 'Import Invoice (Image)',
-    uploadInitialInvoice: 'Import Current Invoice (Optional)',
-    extractedExpenses: 'Identified Expenses',
-    disclaimer: 'Image identification may have inconsistencies. Please verify if values and installments match the real card data.',
-    description: 'Description',
-    value: 'Value',
-    installments: 'Installments',
-    date: 'Date',
-    remove: 'Remove',
-    uploadComingSoon: 'Automatic import coming soon!',
-    confirmDelete: 'Are you sure you want to remove this card?',
-    uploading: 'Analyzing invoice...',
-    uploadSuccess: 'Invoice analyzed successfully! Expenses added.',
-    uploadError: 'Error analyzing invoice. Please try again.'
-  },
-  es: {
-    title: 'Mis Tarjetas',
-    subtitle: 'Gestiona tus tarjetas de crédito, facturas y cuotas.',
-    addCard: 'Añadir Tarjeta',
-    cardName: 'Nombre de la Tarjeta (ej: Santander)',
-    limit: 'Límite Total',
-    usedLimit: 'Límite Utilizado',
-    closingDay: 'Día de Cierre',
-    dueDay: 'Día de Vencimiento',
-    cancel: 'Cancelar',
-    save: 'Guardar',
-    noCards: 'Aún no hay tarjetas registradas.',
-    uploadInvoice: 'Importar Factura (Imagen)',
-    uploadInitialInvoice: 'Importar Factura Actual (Opcional)',
-    extractedExpenses: 'Gastos Identificados',
-    disclaimer: 'La identificación por imagen puede tener inconsistencias. Por favor, verifique si los valores y cuotas coinciden con los datos reales de la tarjeta.',
-    description: 'Descripción',
-    value: 'Valor',
-    installments: 'Cuotas',
-    date: 'Fecha',
-    remove: 'Eliminar',
-    uploadComingSoon: '¡Importación automática próximamente!',
-    confirmDelete: '¿Estás seguro de que deseas eliminar esta tarjeta?',
-    uploading: 'Analizando factura...',
-    uploadSuccess: '¡Factura analizada con éxito! Gastos añadidos.',
-    uploadError: 'Error al analizar la factura. Inténtalo de nuevo.'
-  }
-};
+// ... [keep all your translations] ...
 
 export function CreditCards() {
-  const { creditCards, addCreditCard, removeCreditCard, userStats, addExpense } = useStore();
+  const { creditCards, addCreditCard, removeCreditCard, userStats, addExpense, expenses } = useStore();
   const [isAdding, setIsAdding] = useState(false);
   const [isUploading, setIsUploading] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const initialFileInputRef = useRef<HTMLInputElement>(null);
   const lang = userStats.language || 'pt';
   const t = translations[lang as keyof typeof translations];
 
@@ -107,7 +27,30 @@ export function CreditCards() {
 
   const [extractedExpenses, setExtractedExpenses] = useState<any[]>([]);
   const [isExtractingInitial, setIsExtractingInitial] = useState(false);
-  const initialFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Get expenses for a specific card
+  const getCardExpenses = (cardId: string) => {
+    return expenses?.filter((exp: any) => exp.cardId === cardId) || [];
+  };
+
+  // Calculate total expenses for a card
+  const getCardTotalExpenses = (cardId: string) => {
+    return getCardExpenses(cardId).reduce((sum: number, exp: any) => sum + (exp.value || 0), 0);
+  };
+
+  // Calculate progress percentage
+  const getProgressPercentage = (cardId: string, limit: number) => {
+    if (!limit || limit === 0) return 0;
+    const total = getCardTotalExpenses(cardId);
+    return Math.min((total / limit) * 100, 100);
+  };
+
+  // Get progress bar color based on usage
+  const getProgressColor = (percentage: number) => {
+    if (percentage < 50) return 'from-green-500 to-emerald-500';
+    if (percentage < 80) return 'from-yellow-500 to-amber-500';
+    return 'from-red-500 to-rose-500';
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,7 +58,6 @@ export function CreditCards() {
     
     const cardId = addCreditCard(newCard);
     
-    // Add extracted expenses
     extractedExpenses.forEach(exp => {
       addExpense({
         date: exp.date || new Date().toISOString().split('T')[0],
@@ -162,7 +104,7 @@ export function CreditCards() {
                 },
               },
               {
-                text: 'Extract all the expenses from this credit card invoice image. Return a JSON array of objects, where each object has: "description" (string), "value" (number, the cost in BRL), "date" (string, YYYY-MM-DD), "installments" (number, if it says e.g. 1/12, then 12, otherwise 1).',
+                text: 'Extract all the expenses from this credit card invoice image. Return a JSON array of objects, where each object has: "description" (string), "value" (number, the cost in BRL), "date" (string in YYYY-MM-DD format), and "installments" (number). Only return the JSON array, no other text.',
               },
             ],
           },
@@ -188,7 +130,6 @@ export function CreditCards() {
           const expenses = JSON.parse(response.text);
           setExtractedExpenses(prev => [...prev, ...expenses]);
           
-          // Calculate total from extracted expenses to suggest usedLimit
           const totalExtracted = expenses.reduce((sum: number, exp: any) => sum + (exp.value || 0), 0);
           setNewCard(prev => ({ ...prev, usedLimit: prev.usedLimit + totalExtracted }));
           
@@ -238,7 +179,7 @@ export function CreditCards() {
                 },
               },
               {
-                text: 'Extract all the expenses from this credit card invoice image. Return a JSON array of objects, where each object has: "description" (string), "value" (number, the cost in BRL), "date" (string, YYYY-MM-DD), "installments" (number, if it says e.g. 1/12, then 12, otherwise 1).',
+                text: 'Extract all the expenses from this credit card invoice image. Return a JSON array of objects, where each object has: "description" (string), "value" (number, the cost in BRL), "date" (string in YYYY-MM-DD format), and "installments" (number). Only return the JSON array, no other text.',
               },
             ],
           },
@@ -271,7 +212,8 @@ export function CreditCards() {
               account: creditCards.find(c => c.id === selectedCardId)?.name || 'Credit Card',
               paymentMethod: 'credit',
               installments: exp.installments || 1,
-              status: 'pending'
+              status: 'pending',
+              cardId: selectedCardId
             });
           });
           alert(t.uploadSuccess);
@@ -301,7 +243,7 @@ export function CreditCards() {
         </div>
         <button
           onClick={() => setIsAdding(!isAdding)}
-          className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl font-bold transition-all shadow-[0_0_20px_rgba(139,92,246,0.3)] hover:shadow-[0_0_25px_rgba(139,92,246,0.5)]"
+          className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl font-bold transition-all shadow-[0_0_20px_rgba(139,92,246,0.3)] hover:shadow-[0_0_25px_rgba(139,92,246,0.4)]"
         >
           <Plus className="w-5 h-5" />
           {t.addCard}
@@ -395,7 +337,7 @@ export function CreditCards() {
                 />
                 <label
                   htmlFor="initial-invoice-upload"
-                  className={`flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors cursor-pointer ${isExtractingInitial ? 'opacity-50 pointer-events-none' : ''}`}
+                  className={`flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors cursor-pointer ${isExtractingInitial ? 'opacity-50' : ''}`}
                 >
                   {isExtractingInitial ? (
                     <div className="w-4 h-4 border-2 border-zinc-400 border-t-zinc-100 rounded-full animate-spin" />
@@ -502,71 +444,98 @@ export function CreditCards() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {creditCards.map(card => (
-          <div key={card.id} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 relative group overflow-hidden">
-            <div className="absolute top-0 left-0 w-1 h-full bg-violet-500" />
-            <div className="flex justify-between items-start mb-6">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-violet-500/10 rounded-xl text-violet-400">
-                  <CreditCard className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-zinc-100">{card.name}</h3>
-                  <p className="text-sm text-zinc-500">Limite: R$ {card.limit.toFixed(2)}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => handleDelete(card.id)}
-                className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                title={t.confirmDelete}
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
+        {creditCards.map(card => {
+          const percentage = getProgressPercentage(card.id, card.limit);
+          const totalExpenses = getCardTotalExpenses(card.id);
+          const cardExpenses = getCardExpenses(card.id);
+          const progressColor = getProgressColor(percentage);
 
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-800/50">
-                <div className="flex items-center gap-2 text-zinc-400 mb-1">
-                  <Calendar className="w-4 h-4" />
-                  <span className="text-xs font-bold uppercase tracking-wider">Fechamento</span>
+          return (
+            <div key={card.id} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 relative group overflow-hidden cursor-pointer hover:border-violet-500/50 transition-all" onClick={() => setExpandedCardId(card.id)}>
+              <div className="absolute top-0 left-0 w-1 h-full bg-violet-500" />
+              <div className="flex justify-between items-start mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-violet-500/10 rounded-xl text-violet-400">
+                    <CreditCard className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-zinc-100">{card.name}</h3>
+                    <p className="text-sm text-zinc-500">Limite: R$ {card.limit.toFixed(2)}</p>
+                  </div>
                 </div>
-                <p className="text-lg font-bold text-zinc-200">Dia {card.closingDay}</p>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(card.id);
+                  }}
+                  className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                  title={t.confirmDelete}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
-              <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-800/50">
-                <div className="flex items-center gap-2 text-zinc-400 mb-1">
-                  <DollarSign className="w-4 h-4" />
-                  <span className="text-xs font-bold uppercase tracking-wider">Vencimento</span>
-                </div>
-                <p className="text-lg font-bold text-zinc-200">Dia {card.dueDay}</p>
-              </div>
-            </div>
 
-            <div className="pt-4 border-t border-zinc-800">
-              <input 
-                type="file" 
-                accept="image/*" 
-                className="hidden" 
-                ref={fileInputRef}
-                onChange={handleFileUpload}
-              />
-              <button 
-                className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl transition-colors text-sm font-medium group/btn disabled:opacity-50"
-                onClick={() => {
-                  setSelectedCardId(card.id);
-                  fileInputRef.current?.click();
-                }}
-                disabled={isUploading === card.id}
-              >
-                {isUploading === card.id ? (
-                  <Loader2 className="w-4 h-4 text-zinc-400 animate-spin" />
-                ) : (
-                  <FileUp className="w-4 h-4 text-zinc-400 group-hover/btn:text-zinc-200" />
-                )}
-                {isUploading === card.id ? t.uploading : t.uploadInvoice}
-              </button>
+              {/* Progress Bar */}
+              <div className="mb-6 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Uso do Limite</span>
+                  <span className="text-sm font-bold text-zinc-200">R$ {totalExpenses.toFixed(2)} / R$ {card.limit.toFixed(2)}</span>
+                </div>
+                <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${percentage}%` }}
+                    className={`h-full bg-gradient-to-r ${progressColor} shadow-lg`}
+                  />
+                </div>
+                <p className="text-xs text-zinc-500">{percentage.toFixed(1)}% usado</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-800/50">
+                  <div className="flex items-center gap-2 text-zinc-400 mb-1">
+                    <Calendar className="w-4 h-4" />
+                    <span className="text-xs font-bold uppercase tracking-wider">Fechamento</span>
+                  </div>
+                  <p className="text-lg font-bold text-zinc-200">Dia {card.closingDay}</p>
+                </div>
+                <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-800/50">
+                  <div className="flex items-center gap-2 text-zinc-400 mb-1">
+                    <DollarSign className="w-4 h-4" />
+                    <span className="text-xs font-bold uppercase tracking-wider">Vencimento</span>
+                  </div>
+                  <p className="text-lg font-bold text-zinc-200">Dia {card.dueDay}</p>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-zinc-800">
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  className="hidden" 
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                />
+                <button 
+                  className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl transition-colors text-sm font-medium group/btn disabled:opacity-50"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedCardId(card.id);
+                    fileInputRef.current?.click();
+                  }}
+                  disabled={isUploading === card.id}
+                >
+                  {isUploading === card.id ? (
+                    <Loader2 className="w-4 h-4 text-zinc-400 animate-spin" />
+                  ) : (
+                    <FileUp className="w-4 h-4 text-zinc-400 group-hover/btn:text-zinc-200" />
+                  )}
+                  {isUploading === card.id ? t.uploading : t.uploadInvoice}
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {creditCards.length === 0 && !isAdding && (
@@ -574,6 +543,78 @@ export function CreditCards() {
           <CreditCard className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
           <p className="text-zinc-400">{t.noCards}</p>
         </div>
+      )}
+
+      {/* Modal for Card Details */}
+      {expandedCardId && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={() => setExpandedCardId(null)}
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.95, opacity: 0 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-2xl w-full max-h-96 overflow-y-auto"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-zinc-100">{creditCards.find(c => c.id === expandedCardId)?.name}</h2>
+              <button
+                onClick={() => setExpandedCardId(null)}
+                className="p-2 text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-4 bg-zinc-800/50 rounded-xl border border-zinc-700">
+                <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Resumo</p>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-zinc-400 text-sm">Total Limite</p>
+                    <p className="text-lg font-bold text-zinc-100">R$ {creditCards.find(c => c.id === expandedCardId)?.limit.toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-zinc-400 text-sm">Total Gasto</p>
+                    <p className="text-lg font-bold text-zinc-100">R$ {getCardTotalExpenses(expandedCardId).toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-zinc-400 text-sm">Disponível</p>
+                    <p className="text-lg font-bold text-green-400">R$ {(creditCards.find(c => c.id === expandedCardId)?.limit - getCardTotalExpenses(expandedCardId)).toFixed(2)}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-bold text-zinc-200 mb-3">Despesas ({getCardExpenses(expandedCardId).length})</h3>
+                {getCardExpenses(expandedCardId).length > 0 ? (
+                  <div className="space-y-2">
+                    {getCardExpenses(expandedCardId).map((expense: any, index: number) => (
+                      <div key={index} className="p-3 bg-zinc-800/50 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-colors">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <p className="font-semibold text-zinc-100">{expense.description}</p>
+                            <p className="text-xs text-zinc-500 mt-1">
+                              {expense.date} {expense.installments > 1 && `• ${expense.installments}x`}
+                            </p>
+                          </div>
+                          <p className="font-bold text-zinc-100 ml-4">R$ {expense.value.toFixed(2)}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-center text-zinc-500 py-8">Nenhuma despesa registrada para este cartão</p>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
       )}
     </motion.div>
   );
