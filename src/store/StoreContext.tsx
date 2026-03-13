@@ -11,19 +11,29 @@ interface StoreContextType {
   chatHistory: ChatMessage[];
   creditCards: CreditCard[];
   addExpense: (expense: Omit<Expense, 'id'>) => void;
+  updateExpense: (id: string, expense: Partial<Expense>) => void;
   removeExpense: (id: string) => void;
+  copyExpense: (id: string) => void;
   addIncome: (income: Omit<Income, 'id'>) => void;
-  payGoalStep: (goalId: string) => void;
+  payGoalStep: (goalId: string, amount?: number) => void;
+  updateMajorGoal: (id: string, goal: Partial<MajorGoal>) => void;
+  removeMajorGoal: (id: string) => void;
+  addMajorGoal: (goal: Omit<MajorGoal, 'id'>) => void;
   completeQuest: (questId: string) => void;
   addQuest: (quest: Omit<Quest, 'id'>) => void;
+  updateQuest: (id: string, quest: Partial<Quest>) => void;
+  removeQuest: (id: string) => void;
   toggleQuestFavorite: (questId: string) => void;
   addChatMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
   addCreditCard: (card: Omit<CreditCard, 'id'>) => void;
+  updateCreditCard: (id: string, card: Partial<CreditCard>) => void;
   removeCreditCard: (id: string) => void;
+  payCreditCardInvoice: (id: string, amount: number) => void;
   addXp: (amount: number, reason: string) => void;
   toggleOptimizationMode: () => void;
   changeLanguage: (lang: 'pt' | 'en' | 'es') => void;
   updateName: (name: string) => void;
+  updateAvatar: (avatar: string) => void;
   clearData: () => void;
   signOut: () => void;
   session: any;
@@ -176,11 +186,9 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
 
         const { data: stats } = await supabase.from('user_stats').select('*').eq('id', session.user.id).single();
         if (stats) {
-          if (stats.device_id && stats.device_id !== currentDeviceId) {
-            // Another device is logged in, sign out this one
-            alert('Sua conta foi acessada por outro dispositivo. Você será desconectado.');
-            signOut();
-            return;
+          // Always update the device ID to the current one. The old device will be logged out by the listener.
+          if (stats.device_id !== currentDeviceId) {
+             await supabase.from('user_stats').update({ device_id: currentDeviceId }).eq('id', session.user.id);
           }
 
           const loadedStats = {
@@ -194,7 +202,8 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
             shieldActive: stats.shield_active,
             optimizationMode: stats.optimization_mode,
             language: stats.language,
-            deviceId: currentDeviceId
+            deviceId: currentDeviceId,
+            avatar: stats.avatar
           };
           setUserStats(loadedStats);
           checkStreak(loadedStats);
@@ -228,7 +237,8 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
             account: e.account,
             status: e.status,
             paymentMethod: e.payment_method,
-            installments: e.installments
+            installments: e.installments,
+            cardId: e.card_id
           })));
         }
 
@@ -245,7 +255,8 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
             dueDate: g.due_date,
             stepValue: g.step_value,
             totalValue: g.total_value,
-            paidValue: g.paid_value
+            paidValue: g.paid_value,
+            history: g.history || []
           })));
         }
 
@@ -262,6 +273,9 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
             rewardCoins: q.reward_coins,
             progress: q.progress,
             target: q.target,
+            targetValue: q.target_value,
+            currentValue: q.current_value,
+            history: q.history || [],
             priority: q.priority,
             favorite: q.favorite
           })));
@@ -273,6 +287,7 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
             id: c.id,
             name: c.name,
             limit: c.limit_value,
+            usedLimit: c.used_limit,
             closingDay: c.closing_day,
             dueDay: c.due_day
           })));
@@ -341,7 +356,8 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
           shield_active: userStats.shieldActive,
           optimization_mode: userStats.optimizationMode,
           language: userStats.language,
-          device_id: userStats.deviceId
+          device_id: userStats.deviceId,
+          avatar: userStats.avatar
         });
 
         const mappedExpenses = expenses.map(e => ({ 
@@ -354,7 +370,8 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
           account: e.account,
           status: e.status,
           payment_method: e.paymentMethod,
-          installments: e.installments
+          installments: e.installments,
+          card_id: e.cardId
         }));
         if (mappedExpenses.length > 0) await supabase.from('expenses').upsert(mappedExpenses);
 
@@ -370,7 +387,8 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
           due_date: g.dueDate,
           step_value: g.stepValue,
           total_value: g.totalValue,
-          paid_value: g.paidValue
+          paid_value: g.paidValue,
+          history: g.history || []
         }));
         if (mappedGoals.length > 0) await supabase.from('major_goals').upsert(mappedGoals);
 
@@ -386,6 +404,9 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
           reward_coins: q.rewardCoins,
           progress: q.progress,
           target: q.target,
+          target_value: q.targetValue,
+          current_value: q.currentValue,
+          history: q.history || [],
           priority: q.priority,
           favorite: q.favorite
         }));
@@ -396,6 +417,7 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
           user_id: session.user.id,
           name: c.name,
           limit_value: c.limit,
+          used_limit: c.usedLimit || 0,
           closing_day: c.closingDay,
           due_day: c.dueDay
         }));
@@ -492,6 +514,17 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
     addChatMessage({ role: 'ai', content: message });
   };
 
+  const updateExpense = (id: string, expense: Partial<Expense>) => {
+    setExpenses(prev => prev.map(e => e.id === id ? { ...e, ...expense } : e));
+  };
+
+  const copyExpense = (id: string) => {
+    const expenseToCopy = expenses.find(e => e.id === id);
+    if (expenseToCopy) {
+      addExpense({ ...expenseToCopy, date: new Date().toISOString().split('T')[0] });
+    }
+  };
+
   const removeExpense = async (id: string) => {
     setExpenses(prev => prev.filter(e => e.id !== id));
     if (session?.user?.id) {
@@ -509,7 +542,7 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
     addChatMessage({ role: 'ai', content: `${t.loggedInc} ${income.value.toFixed(2)} ${t.from} ${income.source}. ${t.keepGrowing} +20 XP.` });
   };
 
-  const payGoalStep = (goalId: string) => {
+  const payGoalStep = (goalId: string, amount?: number) => {
     let xpReward = 0;
     let message = '';
     const lang = userStats.language || 'pt';
@@ -518,12 +551,15 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
     setMajorGoals(prev => prev.map(goal => {
       if (goal.id === goalId && goal.completedSteps < goal.totalSteps) {
         const newPaid = goal.completedSteps + 1;
-        const newPaidValue = goal.paidValue + goal.stepValue;
+        const newPaidValue = goal.paidValue + (amount || goal.stepValue);
+        
+        const historyEntry = { date: new Date().toISOString().split('T')[0], value: amount || goal.stepValue };
+        const newHistory = [...(goal.history || []), historyEntry];
         
         // Gamification hook: Critical hit / Goal progress
-        const isDefeated = newPaid === goal.totalSteps;
+        const isDefeated = newPaid === goal.totalSteps || newPaidValue >= goal.totalValue;
         xpReward = 100;
-        message = `${t.greatJob} ${goal.stepValue.toFixed(2)} ${t.towards} ${goal.title}.`;
+        message = `${t.greatJob} ${(amount || goal.stepValue).toFixed(2)} ${t.towards} ${goal.title}.`;
         
         if (isDefeated) {
           xpReward += 500;
@@ -532,7 +568,7 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
           message += ` +100 XP.`;
         }
         
-        return { ...goal, completedSteps: newPaid, paidValue: newPaidValue };
+        return { ...goal, completedSteps: newPaid, paidValue: newPaidValue, history: newHistory };
       }
       return goal;
     }));
@@ -540,6 +576,22 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
     if (xpReward > 0) {
       addXp(xpReward, 'Progressed Major Goal');
       addChatMessage({ role: 'ai', content: message });
+    }
+  };
+
+  const addMajorGoal = (goal: Omit<MajorGoal, 'id'>) => {
+    const newGoal = { ...goal, id: crypto.randomUUID(), history: [] };
+    setMajorGoals(prev => [newGoal, ...prev]);
+  };
+
+  const updateMajorGoal = (id: string, goal: Partial<MajorGoal>) => {
+    setMajorGoals(prev => prev.map(g => g.id === id ? { ...g, ...goal } : g));
+  };
+
+  const removeMajorGoal = async (id: string) => {
+    setMajorGoals(prev => prev.filter(g => g.id !== id));
+    if (session?.user?.id) {
+      await supabase.from('major_goals').delete().eq('id', id);
     }
   };
 
@@ -568,11 +620,22 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
   };
 
   const addQuest = (quest: Omit<Quest, 'id'>) => {
-    const newQuest = { ...quest, id: crypto.randomUUID() };
+    const newQuest = { ...quest, id: crypto.randomUUID(), history: [] };
     setQuests(prev => [newQuest, ...prev]);
     const lang = userStats.language || 'pt';
     const t = (translations as any)[lang] || translations.pt;
     addChatMessage({ role: 'ai', content: `${t.newPlanner} ${quest.title}. ${t.letsWork}` });
+  };
+
+  const updateQuest = (id: string, quest: Partial<Quest>) => {
+    setQuests(prev => prev.map(q => q.id === id ? { ...q, ...quest } : q));
+  };
+
+  const removeQuest = async (id: string) => {
+    setQuests(prev => prev.filter(q => q.id !== id));
+    if (session?.user?.id) {
+      await supabase.from('quests').delete().eq('id', id);
+    }
   };
 
   const toggleQuestFavorite = (questId: string) => {
@@ -593,11 +656,40 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
     setCreditCards(prev => [...prev, newCard]);
   };
 
+  const updateCreditCard = (id: string, card: Partial<CreditCard>) => {
+    setCreditCards(prev => prev.map(c => c.id === id ? { ...c, ...card } : c));
+  };
+
   const removeCreditCard = async (id: string) => {
     setCreditCards(prev => prev.filter(c => c.id !== id));
     if (session?.user?.id) {
       await supabase.from('credit_cards').delete().eq('id', id);
     }
+  };
+
+  const payCreditCardInvoice = (id: string, amount: number) => {
+    setCreditCards(prev => prev.map(c => {
+      if (c.id === id) {
+        const currentUsed = c.usedLimit || 0;
+        const newUsed = Math.max(0, currentUsed - amount);
+        
+        // If paid more than used, add to expenses as "Outros não registrados"
+        if (amount > currentUsed) {
+          addExpense({
+            date: new Date().toISOString().split('T')[0],
+            description: `Pagamento excedente fatura ${c.name}`,
+            value: amount - currentUsed,
+            category: 'Outros',
+            account: c.name,
+            status: 'paid',
+            paymentMethod: 'cash'
+          });
+        }
+        
+        return { ...c, usedLimit: newUsed };
+      }
+      return c;
+    }));
   };
 
   const toggleOptimizationMode = () => {
@@ -610,6 +702,10 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
 
   const updateName = (name: string) => {
     setUserStats(prev => ({ ...prev, name }));
+  };
+
+  const updateAvatar = (avatar: string) => {
+    setUserStats(prev => ({ ...prev, avatar }));
   };
 
   const clearData = () => {
@@ -628,7 +724,7 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
   return (
     <StoreContext.Provider value={{
       userStats, expenses, incomes, majorGoals, quests, chatHistory, creditCards,
-      addExpense, removeExpense, addIncome, payGoalStep, completeQuest, addQuest, toggleQuestFavorite, addChatMessage, addCreditCard, removeCreditCard, addXp, toggleOptimizationMode, changeLanguage, updateName, clearData, signOut, session
+      addExpense, updateExpense, removeExpense, copyExpense, addIncome, payGoalStep, updateMajorGoal, removeMajorGoal, addMajorGoal, completeQuest, addQuest, updateQuest, removeQuest, toggleQuestFavorite, addChatMessage, addCreditCard, updateCreditCard, removeCreditCard, payCreditCardInvoice, addXp, toggleOptimizationMode, changeLanguage, updateName, updateAvatar, clearData, signOut, session
     }}>
       {children}
     </StoreContext.Provider>

@@ -15,12 +15,15 @@ const translations = {
     formDesc: 'Descrição',
     formType: 'Tipo',
     formPriority: 'Prioridade',
+    formTargetValue: 'Valor Total (Opcional)',
     cancel: 'Cancelar',
     createBtn: 'Criar Planejador',
     activePlanners: 'Planejadores Ativos',
     priority: 'Prioridade',
     progress: 'Progresso',
     complete: 'Completar',
+    addProgress: 'Adicionar Progresso',
+    amountToAdd: 'Valor a adicionar',
     noActive: 'Nenhum planejador ativo. Peça uma nova missão ao Navi!',
     completedPlanners: 'Planejadores Concluídos',
     earned: 'Ganhou',
@@ -48,12 +51,15 @@ const translations = {
     formDesc: 'Description',
     formType: 'Type',
     formPriority: 'Priority',
+    formTargetValue: 'Total Value (Optional)',
     cancel: 'Cancel',
     createBtn: 'Create Planner',
     activePlanners: 'Active Planners',
     priority: 'Priority',
     progress: 'Progress',
     complete: 'Complete',
+    addProgress: 'Add Progress',
+    amountToAdd: 'Amount to add',
     noActive: 'No active planners. Ask Navi for a new mission!',
     completedPlanners: 'Completed Planners',
     earned: 'Earned',
@@ -81,12 +87,15 @@ const translations = {
     formDesc: 'Descripción',
     formType: 'Tipo',
     formPriority: 'Prioridad',
+    formTargetValue: 'Valor Total (Opcional)',
     cancel: 'Cancelar',
     createBtn: 'Crear Planificador',
     activePlanners: 'Planificadores Activos',
     priority: 'Prioridad',
     progress: 'Progreso',
     complete: 'Completar',
+    addProgress: 'Añadir Progreso',
+    amountToAdd: 'Cantidad a añadir',
     noActive: 'No hay planificadores activos. ¡Pídele a Navi una nueva misión!',
     completedPlanners: 'Planificadores Completados',
     earned: 'Ganó',
@@ -106,17 +115,19 @@ const translations = {
 };
 
 export function Planners() {
-  const { quests, completeQuest, toggleQuestFavorite, addQuest, userStats } = useStore();
+  const { quests, completeQuest, toggleQuestFavorite, addQuest, updateQuest, userStats } = useStore();
   const [filter, setFilter] = useState<'all' | 'favorites'>('all');
   const [isAdding, setIsAdding] = useState(false);
+  const [paymentAmounts, setPaymentAmounts] = useState<Record<string, string>>({});
   const lang = userStats.language || 'pt';
-  const t = translations[lang];
+  const t = translations[lang as keyof typeof translations];
 
   const [newQuest, setNewQuest] = useState({
     title: '',
     description: '',
     type: 'planner' as const,
     priority: 'medium' as const,
+    targetValue: '',
     rewardXp: 100,
     rewardCoins: 10
   });
@@ -139,6 +150,8 @@ export function Planners() {
 
     addQuest({
       ...newQuest,
+      targetValue: newQuest.targetValue ? parseFloat(newQuest.targetValue) : undefined,
+      currentValue: newQuest.targetValue ? 0 : undefined,
       status: 'active',
       dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Default 1 week
       favorite: false
@@ -150,9 +163,54 @@ export function Planners() {
       description: '',
       type: 'planner',
       priority: 'medium',
+      targetValue: '',
       rewardXp: 100,
       rewardCoins: 10
     });
+  };
+
+  const handlePaymentChange = (questId: string, value: string) => {
+    setPaymentAmounts(prev => ({ ...prev, [questId]: value }));
+  };
+
+  const handleAddProgress = (quest: any) => {
+    const amountStr = paymentAmounts[quest.id];
+    const amount = amountStr ? parseFloat(amountStr) : 0;
+    if (isNaN(amount) || amount <= 0) return;
+    
+    const newCurrent = (quest.currentValue || 0) + amount;
+    const newHistory = [...(quest.history || []), { date: new Date().toISOString(), value: amount }];
+    
+    updateQuest(quest.id, { currentValue: newCurrent, history: newHistory });
+    setPaymentAmounts(prev => ({ ...prev, [quest.id]: '' }));
+    
+    if (quest.targetValue && newCurrent >= quest.targetValue) {
+      completeQuest(quest.id);
+    }
+  };
+
+  const calculateEstimatedMonths = (quest: any) => {
+    if (!quest.history || quest.history.length === 0) return null;
+    
+    // Group history by month
+    const monthlyTotals: Record<string, number> = {};
+    quest.history.forEach((entry: any) => {
+      const monthYear = entry.date.substring(0, 7); // YYYY-MM
+      monthlyTotals[monthYear] = (monthlyTotals[monthYear] || 0) + entry.value;
+    });
+
+    const months = Object.keys(monthlyTotals);
+    if (months.length === 0) return null;
+
+    const totalPaidInHistory = Object.values(monthlyTotals).reduce((sum, val) => sum + val, 0);
+    const averagePerMonth = totalPaidInHistory / months.length;
+
+    if (averagePerMonth <= 0) return null;
+
+    const remainingValue = quest.targetValue - (quest.currentValue || 0);
+    if (remainingValue <= 0) return 0;
+
+    return Math.ceil(remainingValue / averagePerMonth);
   };
 
   return (
@@ -257,6 +315,17 @@ export function Planners() {
                   <option value="low">{t.priorities.low}</option>
                 </select>
               </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{t.formTargetValue}</label>
+                <input
+                  type="number"
+                  value={newQuest.targetValue}
+                  onChange={e => setNewQuest({...newQuest, targetValue: e.target.value})}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                  placeholder="e.g., 5000"
+                />
+              </div>
             </div>
 
             <div className="mt-6 flex justify-end gap-4 relative z-10">
@@ -324,17 +393,39 @@ export function Planners() {
                 </div>
               </div>
 
-              {quest.progress !== undefined && quest.target !== undefined && (
+              {quest.targetValue !== undefined && (
                 <div className="relative z-10 mb-6">
                   <div className="flex justify-between text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">
                     <span>{t.progress}</span>
-                    <span className="font-mono">R$ {quest.progress} / R$ {quest.target}</span>
+                    <span className="font-mono">R$ {(quest.currentValue || 0).toFixed(2)} / R$ {quest.targetValue.toFixed(2)}</span>
                   </div>
-                  <div className="w-full h-2 bg-zinc-950 rounded-full overflow-hidden border border-zinc-800">
+                  <div className="w-full h-2 bg-zinc-950 rounded-full overflow-hidden border border-zinc-800 mb-2">
                     <div 
                       className={`h-full bg-blue-500 rounded-full ${userStats.optimizationMode ? '' : 'transition-all duration-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]'}`}
-                      style={{ width: `${(quest.progress / quest.target) * 100}%` }}
+                      style={{ width: `${((quest.currentValue || 0) / quest.targetValue) * 100}%` }}
                     />
+                  </div>
+                  
+                  {calculateEstimatedMonths(quest) !== null && (
+                    <div className="text-xs text-zinc-500 mb-4 text-right">
+                      Tempo estimado: {calculateEstimatedMonths(quest)} meses
+                    </div>
+                  )}
+                  
+                  <div className="flex gap-2 mt-4">
+                    <input
+                      type="number"
+                      value={paymentAmounts[quest.id] !== undefined ? paymentAmounts[quest.id] : ''}
+                      onChange={(e) => handlePaymentChange(quest.id, e.target.value)}
+                      placeholder={t.amountToAdd}
+                      className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-zinc-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono text-sm"
+                    />
+                    <button
+                      onClick={() => handleAddProgress(quest)}
+                      className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-bold rounded-xl transition-all text-sm"
+                    >
+                      {t.addProgress}
+                    </button>
                   </div>
                 </div>
               )}
