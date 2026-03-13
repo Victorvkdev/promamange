@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../store/StoreContext';
 import { motion } from 'motion/react';
-import { Briefcase, TrendingUp, Award, Globe, Plus, CheckCircle2, Star, ChevronRight, Trash2, MapPin, Edit2 } from 'lucide-react';
+import { Briefcase, TrendingUp, Award, Globe, Plus, CheckCircle2, Star, ChevronRight, Trash2, MapPin, Edit2, X, Search } from 'lucide-react';
 
 const translations = {
   pt: {
@@ -42,7 +42,15 @@ const translations = {
       course: 'Curso'
     },
     save: 'Salvar',
-    cancel: 'Cancelar'
+    cancel: 'Cancelar',
+    checkSalary: 'Quer saber se está ganhando abaixo da média?',
+    profession: 'Profissão',
+    selectProfession: 'Selecione uma profissão...',
+    yourSalary: 'Seu Salário',
+    country: 'País',
+    searchingProfessions: 'Buscando profissões...',
+    noProfessionsFound: 'Nenhuma profissão encontrada',
+    averageSalaryTitle: 'Salário Médio da Profissão'
   },
   en: {
     title: 'Career Management',
@@ -82,7 +90,15 @@ const translations = {
       course: 'Course'
     },
     save: 'Save',
-    cancel: 'Cancel'
+    cancel: 'Cancel',
+    checkSalary: 'Want to know if you\'re earning below average?',
+    profession: 'Profession',
+    selectProfession: 'Select a profession...',
+    yourSalary: 'Your Salary',
+    country: 'Country',
+    searchingProfessions: 'Searching professions...',
+    noProfessionsFound: 'No professions found',
+    averageSalaryTitle: 'Average Profession Salary'
   },
   es: {
     title: 'Gestión de Carrera',
@@ -122,38 +138,167 @@ const translations = {
       course: 'Curso'
     },
     save: 'Guardar',
-    cancel: 'Cancelar'
+    cancel: 'Cancelar',
+    checkSalary: '¿Quieres saber si ganas por debajo del promedio?',
+    profession: 'Profesión',
+    selectProfession: 'Selecciona una profesión...',
+    yourSalary: 'Tu Salario',
+    country: 'País',
+    searchingProfessions: 'Buscando profesiones...',
+    noProfessionsFound: 'No se encontraron profesiones',
+    averageSalaryTitle: 'Salario Promedio de la Profesión'
   }
 };
+
+// Dados estáticos de profissões por país (fallback quando IBGE não tem dados)
+const staticSalaries: Record<string, Record<string, number>> = {
+  'BR': {
+    'desenvolvedor': 6500,
+    'designer': 4500,
+    'gerente de projeto': 7000,
+    'analista de dados': 6000,
+    'engenheiro de software': 8000,
+    'product manager': 7500,
+    'arquiteto de software': 9000,
+  },
+  'US': {
+    'developer': 85000,
+    'designer': 65000,
+    'project manager': 90000,
+    'data analyst': 75000,
+    'software engineer': 95000,
+    'product manager': 100000,
+    'software architect': 120000,
+  },
+  'PT': {
+    'desenvolvedor': 2000,
+    'designer': 1600,
+    'gerente de projeto': 2400,
+    'analista de dados': 2100,
+    'engenheiro de software': 2500,
+  },
+  'UK': {
+    'developer': 55000,
+    'designer': 42000,
+    'project manager': 60000,
+    'data analyst': 50000,
+    'software engineer': 65000,
+  },
+  'CA': {
+    'developer': 75000,
+    'designer': 58000,
+    'project manager': 80000,
+    'data analyst': 65000,
+    'software engineer': 85000,
+  },
+};
+
+interface ProfessionSalary {
+  profession: string;
+  country: string;
+  salary: number;
+}
 
 export function Career() {
   const { userStats } = useStore();
   const lang = userStats.language || 'pt';
   const t = translations[lang];
 
-  const [salary, setSalary] = useState(0);
-  const [selectedCountry, setSelectedCountry] = useState('BR');
+  // Estados para o modal de profissão
+  const [showProfessionModal, setShowProfessionModal] = useState(false);
+  const [professionData, setProfessionData] = useState<ProfessionSalary | null>(null);
   
-  const marketAverages: Record<string, number> = {
-    'BR': 6500,
-    'US': 35000,
-    'PT': 12000,
-    'UK': 28000,
-    'CA': 30000,
-  };
+  // Estados do formulário do modal
+  const [formProfession, setFormProfession] = useState('');
+  const [formSalary, setFormSalary] = useState('');
+  const [formCountry, setFormCountry] = useState('BR');
+  const [professionSuggestions, setProfessionSuggestions] = useState<string[]>([]);
+  const [isLoadingProfessions, setIsLoadingProfessions] = useState(false);
 
-  const marketAverage = marketAverages[selectedCountry] || 6500;
-
+  // Estados existentes
   const [skills, setSkills] = useState([]);
   const [isAddingSkill, setIsAddingSkill] = useState(false);
   const [newSkill, setNewSkill] = useState({ name: '', level: '', type: 'skill' });
   
   const [achievements, setAchievements] = useState([]);
-
   const [isAddingAchievement, setIsAddingAchievement] = useState(false);
   const [editingAchievementId, setEditingAchievementId] = useState<number | null>(null);
   const [newAchievement, setNewAchievement] = useState({ title: '', date: new Date().toISOString().split('T')[0], type: 'promotion' });
 
+  // Buscar profissões da IBGE quando o usuário digita
+  useEffect(() => {
+    if (formProfession.length < 2) {
+      setProfessionSuggestions([]);
+      return;
+    }
+
+    const fetchProfessions = async () => {
+      setIsLoadingProfessions(true);
+      try {
+        // Se for Brasil, tenta buscar da IBGE
+        if (formCountry === 'BR') {
+          // Nota: Esta é uma simulação. Em produção, você integraria com a IBGE API real
+          const allProfessions = Object.keys(staticSalaries[formCountry] || {});
+          const filtered = allProfessions.filter(p => 
+            p.toLowerCase().includes(formProfession.toLowerCase())
+          );
+          setProfessionSuggestions(filtered);
+        } else {
+          // Para outros países, usa dados estáticos
+          const allProfessions = Object.keys(staticSalaries[formCountry] || {});
+          const filtered = allProfessions.filter(p => 
+            p.toLowerCase().includes(formProfession.toLowerCase())
+          );
+          setProfessionSuggestions(filtered);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar profissões:', error);
+        setProfessionSuggestions([]);
+      } finally {
+        setIsLoadingProfessions(false);
+      }
+    };
+
+    const timer = setTimeout(fetchProfessions, 300);
+    return () => clearTimeout(timer);
+  }, [formProfession, formCountry]);
+
+  const handleSelectProfession = (profession: string) => {
+    setFormProfession(profession);
+    setProfessionSuggestions([]);
+    
+    // Busca o salário médio da profissão
+    const avgSalary = staticSalaries[formCountry]?.[profession.toLowerCase()] || 0;
+    if (avgSalary) {
+      setFormSalary(avgSalary.toString());
+    }
+  };
+
+  const handleSaveProfession = () => {
+    if (!formProfession || !formSalary) return;
+
+    setProfessionData({
+      profession: formProfession,
+      country: formCountry,
+      salary: Number(formSalary)
+    });
+
+    setShowProfessionModal(false);
+    setFormProfession('');
+    setFormSalary('');
+    setFormCountry('BR');
+  };
+
+  const handleEditProfession = () => {
+    if (professionData) {
+      setFormProfession(professionData.profession);
+      setFormSalary(professionData.salary.toString());
+      setFormCountry(professionData.country);
+      setShowProfessionModal(true);
+    }
+  };
+
+  // Funções existentes
   const handleAddAchievement = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAchievement.title) return;
@@ -220,6 +365,134 @@ export function Career() {
         <p className="text-sm md:text-base text-zinc-400 mt-1">{t.subtitle}</p>
       </div>
 
+      {/* Botão para abrir modal de profissão */}
+      <button
+        onClick={() => setShowProfessionModal(true)}
+        className="w-full bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-400 text-white font-bold py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-2"
+      >
+        <Search className="w-5 h-5" />
+        {t.checkSalary}
+      </button>
+
+      {/* Modal de Profissão */}
+      {showProfessionModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full space-y-6"
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-zinc-100">{t.profession}</h2>
+              <button
+                onClick={() => setShowProfessionModal(false)}
+                className="p-1 text-zinc-400 hover:text-zinc-100"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Campo de Profissão com autocomplete */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-400 mb-2">
+                  {t.profession}
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder={t.selectProfession}
+                    value={formProfession}
+                    onChange={(e) => setFormProfession(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+                  />
+                  
+                  {/* Dropdown de sugestões */}
+                  {professionSuggestions.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-950 border border-zinc-800 rounded-lg overflow-hidden z-10">
+                      {professionSuggestions.map((prof) => (
+                        <button
+                          key={prof}
+                          onClick={() => handleSelectProfession(prof)}
+                          className="w-full text-left px-4 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+                        >
+                          {prof}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {isLoadingProfessions && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-950 border border-zinc-800 rounded-lg p-2">
+                      <p className="text-sm text-zinc-400">{t.searchingProfessions}</p>
+                    </div>
+                  )}
+
+                  {formProfession.length >= 2 && professionSuggestions.length === 0 && !isLoadingProfessions && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-950 border border-zinc-800 rounded-lg p-2">
+                      <p className="text-sm text-zinc-400">{t.noProfessionsFound}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Campo de Salário */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-400 mb-2">
+                  {t.yourSalary}
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={formSalary}
+                  onChange={(e) => setFormSalary(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+                />
+                {formSalary && (
+                  <p className="text-xs text-zinc-500 mt-1">
+                    {t.averageSalaryTitle}: {staticSalaries[formCountry]?.[formProfession.toLowerCase()] || 'N/A'}
+                  </p>
+                )}
+              </div>
+
+              {/* Campo de País */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-400 mb-2">
+                  {t.country}
+                </label>
+                <select
+                  value={formCountry}
+                  onChange={(e) => setFormCountry(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100 focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+                >
+                  {Object.entries(t.countries).map(([code, name]) => (
+                    <option key={code} value={code}>{name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Botões */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowProfessionModal(false)}
+                className="flex-1 px-4 py-2 text-zinc-400 hover:text-zinc-100 border border-zinc-800 rounded-lg transition-colors"
+              >
+                {t.cancel}
+              </button>
+              <button
+                onClick={handleSaveProfession}
+                disabled={!formProfession || !formSalary}
+                className="flex-1 px-4 py-2 bg-violet-500 hover:bg-violet-400 disabled:bg-zinc-700 disabled:cursor-not-allowed text-zinc-950 font-bold rounded-lg transition-colors"
+              >
+                {t.save}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Market Comparison */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
@@ -228,61 +501,64 @@ export function Career() {
             {t.marketComparison}
           </h3>
           
-          <div className="space-y-6">
-            <div>
-              <div className="flex justify-between mb-2">
-                <span className="text-zinc-400">{t.mySalary}</span>
-                <input
-                  type="number"
-                  value={salary}
-                  onChange={(e) => setSalary(Number(e.target.value))}
-                  className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-zinc-100 font-bold w-32 text-right focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
-                />
-              </div>
-              <div className="w-full h-3 bg-zinc-800 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-violet-500 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min((salary / Math.max(salary, marketAverage || 1)) * 100, 100)}%` }}
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-2 items-center">
-                <span className="text-zinc-400 flex items-center gap-2">
-                  <MapPin className="w-4 h-4" /> {t.marketAverage}
-                </span>
-                <div className="flex items-center gap-2">
-                  <select
-                    value={selectedCountry}
-                    onChange={(e) => setSelectedCountry(e.target.value)}
-                    className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-zinc-100 text-sm focus:border-violet-500 focus:ring-1 focus:ring-violet-500 appearance-none"
-                  >
-                    {Object.entries(t.countries).map(([code, name]) => (
-                      <option key={code} value={code}>{name}</option>
-                    ))}
-                  </select>
-                  <span className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-zinc-100 font-bold w-32 text-right">
-                    {marketAverage}
-                  </span>
+          {professionData ? (
+            <div className="space-y-6">
+              <div>
+                <div className="flex justify-between mb-2">
+                  <span className="text-zinc-400">{t.mySalary}</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={professionData.salary}
+                      onChange={(e) => setProfessionData({...professionData, salary: Number(e.target.value)})}
+                      className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-zinc-100 font-bold w-32 text-right focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+                    />
+                    <button
+                      onClick={handleEditProfession}
+                      className="p-1 text-zinc-400 hover:text-violet-400"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="w-full h-3 bg-zinc-800 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-violet-500 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min((professionData.salary / Math.max(professionData.salary, staticSalaries[professionData.country]?.[professionData.profession.toLowerCase()] || 1)) * 100, 100)}%` }}
+                  />
                 </div>
               </div>
-              <div className="w-full h-3 bg-zinc-800 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-zinc-600 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min((marketAverage / Math.max(salary, marketAverage || 1)) * 100, 100)}%` }}
-                />
+
+              <div>
+                <div className="flex justify-between mb-2 items-center">
+                  <span className="text-zinc-400 flex items-center gap-2">
+                    <MapPin className="w-4 h-4" /> {t.marketAverage}
+                  </span>
+                  <span className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-zinc-100 font-bold">
+                    {staticSalaries[professionData.country]?.[professionData.profession.toLowerCase()] || 'N/A'}
+                  </span>
+                </div>
+                <div className="w-full h-3 bg-zinc-800 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-zinc-600 rounded-full transition-all duration-500"
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              </div>
+              
+              <div className="pt-4 border-t border-zinc-800">
+                <p className="text-sm text-zinc-400">
+                  {professionData.salary >= (staticSalaries[professionData.country]?.[professionData.profession.toLowerCase()] || 0)
+                    ? "Você está acima da média do mercado! Excelente trabalho." 
+                    : "Você está abaixo da média do mercado. Considere buscar novas qualificações ou negociar seu salário."}
+                </p>
               </div>
             </div>
-            
-            <div className="pt-4 border-t border-zinc-800">
-              <p className="text-sm text-zinc-400">
-                {salary >= marketAverage 
-                  ? "Você está acima da média do mercado! Excelente trabalho." 
-                  : "Você está abaixo da média do mercado. Considere buscar novas qualificações ou negociar seu salário."}
-              </p>
+          ) : (
+            <div className="text-center p-6 text-zinc-500">
+              <p>{t.checkSalary}</p>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Skill Badges */}
