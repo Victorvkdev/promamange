@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Receipt, Swords, Target, Settings, LogOut, ChevronLeft, ChevronRight, Briefcase } from 'lucide-react';
+import { LayoutDashboard, Receipt, Swords, Target, Settings, LogOut, ChevronLeft, ChevronRight, Briefcase, CreditCard } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { supabase } from '../lib/supabase';
@@ -18,6 +18,7 @@ const translations = {
     goals: 'Grandes Metas',
     planners: 'Planejadores e Missões',
     career: 'Gestão de Carreira',
+    cards: 'Meus Cartões',
     settings: 'Configurações',
     logout: 'Sair'
   },
@@ -27,6 +28,7 @@ const translations = {
     goals: 'Major Goals',
     planners: 'Planners & Quests',
     career: 'Career Management',
+    cards: 'My Cards',
     settings: 'Settings',
     logout: 'Logout'
   },
@@ -36,6 +38,7 @@ const translations = {
     goals: 'Metas Principales',
     planners: 'Planificadores y Misiones',
     career: 'Gestión de Carrera',
+    cards: 'Mis Tarjetas',
     settings: 'Configuraciones',
     logout: 'Cerrar Sesión'
   }
@@ -57,6 +60,7 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
     { icon: Swords, label: t.goals, path: '/debts' },
     { icon: Target, label: t.planners, path: '/planners' },
     { icon: Briefcase, label: t.career, path: '/career' },
+    { icon: CreditCard, label: t.cards, path: '/cards' },
   ];
 
   const handleLogout = async () => {

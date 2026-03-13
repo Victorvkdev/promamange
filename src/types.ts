@@ -17,6 +17,7 @@ export interface UserStats {
   shieldActive: boolean;
   optimizationMode: boolean;
   language: 'pt' | 'en' | 'es';
+  deviceId?: string;
 }
 
 export interface Expense {
@@ -27,6 +28,16 @@ export interface Expense {
   category: string;
   account: string;
   status: 'pending' | 'paid';
+  paymentMethod?: 'credit' | 'debit' | 'cash';
+  installments?: number;
+}
+
+export interface CreditCard {
+  id: string;
+  name: string;
+  limit: number;
+  closingDay: number;
+  dueDay: number;
 }
 
 export interface MajorGoal {

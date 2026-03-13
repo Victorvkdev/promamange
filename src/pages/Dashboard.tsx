@@ -119,8 +119,8 @@ export function Dashboard() {
 
   const pieData = Object.entries(expensesByCategory).map(([name, value]) => ({
     name,
-    value
-  })).sort((a, b) => b.value - a.value);
+    value: Number(value)
+  })).sort((a: { value: number }, b: { value: number }) => b.value - a.value);
 
   return (
     <motion.div

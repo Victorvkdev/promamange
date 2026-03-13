@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useStore } from '../store/StoreContext';
 import { motion } from 'motion/react';
-import { Plus, Receipt, Calendar, Tag, CreditCard, CheckCircle2, FileDown, FileSpreadsheet } from 'lucide-react';
+import { Plus, Receipt, Calendar, Tag, CreditCard, CheckCircle2, FileDown, FileSpreadsheet, Trash2 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -18,10 +18,18 @@ const translations = {
     descPlaceholder: 'ex., Supermercado',
     category: 'Categoria',
     account: 'Conta',
+    paymentMethod: 'Forma de Pagamento',
+    installments: 'Parcelas',
     cancel: 'Cancelar',
     save: 'Salvar e Ganhar XP',
     exportPDF: 'Exportar PDF',
     exportExcel: 'Exportar Excel',
+    confirmDelete: 'Tem certeza que deseja remover este gasto?',
+    methods: {
+      credit: 'Crédito',
+      debit: 'Débito',
+      cash: 'À Vista / Pix'
+    },
     categories: {
       food: 'Alimentação',
       transport: 'Transporte',
@@ -41,7 +49,8 @@ const translations = {
       desc: 'Descrição',
       cat: 'Categoria',
       acc: 'Conta',
-      val: 'Valor'
+      val: 'Valor',
+      actions: 'Ações'
     },
     empty: 'Nenhum gasto registrado ainda. Comece sua rotina diária!'
   },
@@ -56,10 +65,18 @@ const translations = {
     descPlaceholder: 'e.g., Groceries',
     category: 'Category',
     account: 'Account',
+    paymentMethod: 'Payment Method',
+    installments: 'Installments',
     cancel: 'Cancel',
     save: 'Save & Earn XP',
     exportPDF: 'Export PDF',
     exportExcel: 'Export Excel',
+    confirmDelete: 'Are you sure you want to remove this expense?',
+    methods: {
+      credit: 'Credit',
+      debit: 'Debit',
+      cash: 'Cash / Pix'
+    },
     categories: {
       food: 'Food',
       transport: 'Transport',
@@ -79,7 +96,8 @@ const translations = {
       desc: 'Description',
       cat: 'Category',
       acc: 'Account',
-      val: 'Value'
+      val: 'Value',
+      actions: 'Actions'
     },
     empty: 'No expenses logged yet. Start your daily grind!'
   },
@@ -94,10 +112,18 @@ const translations = {
     descPlaceholder: 'ej., Supermercado',
     category: 'Categoría',
     account: 'Cuenta',
+    paymentMethod: 'Método de Pago',
+    installments: 'Cuotas',
     cancel: 'Cancelar',
     save: 'Guardar y Ganar XP',
     exportPDF: 'Exportar PDF',
     exportExcel: 'Exportar Excel',
+    confirmDelete: '¿Estás seguro de que deseas eliminar este gasto?',
+    methods: {
+      credit: 'Crédito',
+      debit: 'Débito',
+      cash: 'Efectivo / Pix'
+    },
     categories: {
       food: 'Alimentación',
       transport: 'Transporte',
@@ -117,14 +143,15 @@ const translations = {
       desc: 'Descripción',
       cat: 'Categoría',
       acc: 'Cuenta',
-      val: 'Valor'
+      val: 'Valor',
+      actions: 'Acciones'
     },
     empty: 'Aún no hay gastos registrados. ¡Empieza tu rutina diaria!'
   }
 };
 
 export function Expenses() {
-  const { expenses, addExpense, userStats } = useStore();
+  const { expenses, addExpense, removeExpense, userStats } = useStore();
   const [isAdding, setIsAdding] = useState(false);
   const lang = userStats.language || 'pt';
   const t = translations[lang];
@@ -135,6 +162,8 @@ export function Expenses() {
     description: '',
     category: t.categories.food,
     account: t.accounts.nubank,
+    paymentMethod: 'credit' as 'credit' | 'debit' | 'cash',
+    installments: 1,
     status: 'paid' as const
   });
 
@@ -154,8 +183,16 @@ export function Expenses() {
       description: '',
       category: t.categories.food,
       account: t.accounts.nubank,
+      paymentMethod: 'credit',
+      installments: 1,
       status: 'paid'
     });
+  };
+
+  const handleDelete = (id: string) => {
+    if (window.confirm(t.confirmDelete)) {
+      removeExpense(id);
+    }
   };
 
   const exportToPDF = () => {
@@ -322,6 +359,38 @@ export function Expenses() {
                 <option value={t.accounts.cash}>{t.accounts.cash}</option>
               </select>
             </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                <CreditCard className="w-4 h-4" /> {t.paymentMethod}
+              </label>
+              <select
+                value={newExpense.paymentMethod}
+                onChange={e => setNewExpense({...newExpense, paymentMethod: e.target.value as any})}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all appearance-none"
+              >
+                <option value="credit">{t.methods.credit}</option>
+                <option value="debit">{t.methods.debit}</option>
+                <option value="cash">{t.methods.cash}</option>
+              </select>
+            </div>
+
+            {newExpense.paymentMethod === 'credit' && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                  <Calendar className="w-4 h-4" /> {t.installments}
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="48"
+                  value={newExpense.installments}
+                  onChange={e => setNewExpense({...newExpense, installments: parseInt(e.target.value) || 1})}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all"
+                  required
+                />
+              </div>
+            )}
           </div>
 
           <div className="mt-6 flex justify-end gap-4 relative z-10">
@@ -353,27 +422,45 @@ export function Expenses() {
                 <th className="p-4 text-xs font-bold text-zinc-400 uppercase tracking-wider">{t.table.cat}</th>
                 <th className="p-4 text-xs font-bold text-zinc-400 uppercase tracking-wider">{t.table.acc}</th>
                 <th className="p-4 text-xs font-bold text-zinc-400 uppercase tracking-wider text-right">{t.table.val}</th>
+                <th className="p-4 text-xs font-bold text-zinc-400 uppercase tracking-wider text-right">{t.table.actions}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/50">
               {expenses.map((expense) => (
                 <tr key={expense.id} className="hover:bg-zinc-800/30 transition-colors group">
                   <td className="p-4 text-zinc-300 font-mono text-sm">{expense.date}</td>
-                  <td className="p-4 font-medium text-zinc-100">{expense.description}</td>
+                  <td className="p-4 font-medium text-zinc-100">
+                    {expense.description}
+                    {expense.paymentMethod === 'credit' && expense.installments && expense.installments > 1 && (
+                      <span className="ml-2 text-xs text-zinc-500">({expense.installments}x)</span>
+                    )}
+                  </td>
                   <td className="p-4">
                     <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700">
                       {expense.category}
                     </span>
                   </td>
-                  <td className="p-4 text-zinc-400 text-sm">{expense.account}</td>
+                  <td className="p-4 text-zinc-400 text-sm">
+                    {expense.account}
+                    {expense.paymentMethod && <span className="block text-xs text-zinc-500 mt-0.5">{(t.methods as any)[expense.paymentMethod]}</span>}
+                  </td>
                   <td className="p-4 text-right font-mono font-bold text-red-400">
                     -R$ {expense.value.toFixed(2)}
+                  </td>
+                  <td className="p-4 text-right">
+                    <button
+                      onClick={() => handleDelete(expense.id)}
+                      className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                      title={t.confirmDelete}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </td>
                 </tr>
               ))}
               {expenses.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-zinc-500">
+                  <td colSpan={6} className="p-8 text-center text-zinc-500">
                     {t.empty}
                   </td>
                 </tr>

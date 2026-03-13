@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { UserStats, Expense, MajorGoal, Quest, ChatMessage, Income } from '../types';
+import { UserStats, Expense, MajorGoal, Quest, ChatMessage, Income, CreditCard } from '../types';
 import { supabase } from '../lib/supabase';
 
 interface StoreContextType {
@@ -9,13 +9,17 @@ interface StoreContextType {
   majorGoals: MajorGoal[];
   quests: Quest[];
   chatHistory: ChatMessage[];
+  creditCards: CreditCard[];
   addExpense: (expense: Omit<Expense, 'id'>) => void;
+  removeExpense: (id: string) => void;
   addIncome: (income: Omit<Income, 'id'>) => void;
   payGoalStep: (goalId: string) => void;
   completeQuest: (questId: string) => void;
   addQuest: (quest: Omit<Quest, 'id'>) => void;
   toggleQuestFavorite: (questId: string) => void;
   addChatMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
+  addCreditCard: (card: Omit<CreditCard, 'id'>) => void;
+  removeCreditCard: (id: string) => void;
   addXp: (amount: number, reason: string) => void;
   toggleOptimizationMode: () => void;
   changeLanguage: (lang: 'pt' | 'en' | 'es') => void;
@@ -36,6 +40,7 @@ const defaultStats: UserStats = {
   shieldActive: true,
   optimizationMode: false,
   language: 'pt',
+  deviceId: '',
 };
 
 const initialExpenses: Expense[] = [];
@@ -45,6 +50,8 @@ const initialIncomes: Income[] = [];
 const initialGoals: MajorGoal[] = [];
 
 const initialQuests: Quest[] = [];
+
+const initialCreditCards: CreditCard[] = [];
 
 const initialChat: ChatMessage[] = [
   { id: '1', role: 'ai', content: 'Bem-vindo ao seu Hub Financeiro! Comece adicionando sua primeira despesa, meta ou planejador.', timestamp: new Date().toISOString() }
@@ -119,6 +126,7 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
   const [majorGoals, setMajorGoals] = useState<MajorGoal[]>(initialGoals);
   const [quests, setQuests] = useState<Quest[]>(initialQuests);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>(initialChat);
+  const [creditCards, setCreditCards] = useState<CreditCard[]>(initialCreditCards);
 
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -147,6 +155,9 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
       const savedQuests = localStorage.getItem('promanage_v2_quests');
       if (savedQuests) setQuests(JSON.parse(savedQuests));
       
+      const savedCards = localStorage.getItem('promanage_v2_cards');
+      if (savedCards) setCreditCards(JSON.parse(savedCards));
+      
       const savedChat = localStorage.getItem('promanage_v2_chat');
       if (savedChat) setChatHistory(JSON.parse(savedChat));
 
@@ -157,8 +168,21 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
 
     const loadData = async () => {
       try {
+        let currentDeviceId = localStorage.getItem('promanage_v2_device_id');
+        if (!currentDeviceId) {
+          currentDeviceId = crypto.randomUUID();
+          localStorage.setItem('promanage_v2_device_id', currentDeviceId);
+        }
+
         const { data: stats } = await supabase.from('user_stats').select('*').eq('id', session.user.id).single();
         if (stats) {
+          if (stats.device_id && stats.device_id !== currentDeviceId) {
+            // Another device is logged in, sign out this one
+            alert('Sua conta foi acessada por outro dispositivo. Você será desconectado.');
+            signOut();
+            return;
+          }
+
           const loadedStats = {
             name: stats.name,
             xp: stats.xp,
@@ -169,14 +193,44 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
             lastLoginDate: stats.last_login_date,
             shieldActive: stats.shield_active,
             optimizationMode: stats.optimization_mode,
-            language: stats.language
+            language: stats.language,
+            deviceId: currentDeviceId
           };
           setUserStats(loadedStats);
           checkStreak(loadedStats);
+        } else {
+          // New user, set device ID
+          setUserStats(prev => ({ ...prev, deviceId: currentDeviceId as string }));
         }
 
+        // Listen for device_id changes
+        const channel = supabase.channel('user_stats_changes')
+          .on(
+            'postgres_changes',
+            { event: 'UPDATE', schema: 'public', table: 'user_stats', filter: `id=eq.${session.user.id}` },
+            (payload) => {
+              if (payload.new.device_id && payload.new.device_id !== currentDeviceId) {
+                alert('Sua conta foi acessada por outro dispositivo. Você será desconectado.');
+                signOut();
+              }
+            }
+          )
+          .subscribe();
+
         const { data: exp } = await supabase.from('expenses').select('*').eq('user_id', session.user.id);
-        if (exp && exp.length > 0) setExpenses(exp);
+        if (exp && exp.length > 0) {
+          setExpenses(exp.map(e => ({
+            id: e.id,
+            date: e.date,
+            value: e.value,
+            description: e.description,
+            category: e.category,
+            account: e.account,
+            status: e.status,
+            paymentMethod: e.payment_method,
+            installments: e.installments
+          })));
+        }
 
         const { data: inc } = await supabase.from('incomes').select('*').eq('user_id', session.user.id);
         if (inc && inc.length > 0) setIncomes(inc);
@@ -212,31 +266,68 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
             favorite: q.favorite
           })));
         }
+
+        const { data: cards } = await supabase.from('credit_cards').select('*').eq('user_id', session.user.id);
+        if (cards && cards.length > 0) {
+          setCreditCards(cards.map(c => ({
+            id: c.id,
+            name: c.name,
+            limit: c.limit_value,
+            closingDay: c.closing_day,
+            dueDay: c.due_day
+          })));
+        }
       } catch (error) {
-        console.error('Error loading data from Supabase:', error);
+        console.error('Error loading data from Supabase, falling back to local storage:', error);
+        // Fallback to local storage on error (e.g., offline)
+        const savedStats = localStorage.getItem('promanage_v2_stats');
+        if (savedStats) setUserStats(JSON.parse(savedStats));
+        
+        const savedExpenses = localStorage.getItem('promanage_v2_expenses');
+        if (savedExpenses) setExpenses(JSON.parse(savedExpenses));
+
+        const savedIncomes = localStorage.getItem('promanage_v2_incomes');
+        if (savedIncomes) setIncomes(JSON.parse(savedIncomes));
+
+        const savedGoals = localStorage.getItem('promanage_v2_goals');
+        if (savedGoals) setMajorGoals(JSON.parse(savedGoals));
+
+        const savedQuests = localStorage.getItem('promanage_v2_quests');
+        if (savedQuests) setQuests(JSON.parse(savedQuests));
+        
+        const savedCards = localStorage.getItem('promanage_v2_cards');
+        if (savedCards) setCreditCards(JSON.parse(savedCards));
+        
+        const savedChat = localStorage.getItem('promanage_v2_chat');
+        if (savedChat) setChatHistory(JSON.parse(savedChat));
       } finally {
         setIsLoaded(true);
       }
     };
 
     loadData();
+
+    return () => {
+      supabase.removeAllChannels();
+    };
   }, [session]);
 
   // Save to Supabase (or local storage) on change
   useEffect(() => {
     if (!isLoaded) return; // Don't save before initial load
 
-    if (!session?.user?.id) {
+    const saveToSupabase = async () => {
+      // Always save to local storage as a fallback/offline cache
       localStorage.setItem('promanage_v2_stats', JSON.stringify(userStats));
       localStorage.setItem('promanage_v2_expenses', JSON.stringify(expenses));
       localStorage.setItem('promanage_v2_incomes', JSON.stringify(incomes));
       localStorage.setItem('promanage_v2_goals', JSON.stringify(majorGoals));
       localStorage.setItem('promanage_v2_quests', JSON.stringify(quests));
+      localStorage.setItem('promanage_v2_cards', JSON.stringify(creditCards));
       localStorage.setItem('promanage_v2_chat', JSON.stringify(chatHistory));
-      return;
-    }
 
-    const saveToSupabase = async () => {
+      if (!session?.user?.id) return;
+
       try {
         await supabase.from('user_stats').upsert({ 
           id: session.user.id, 
@@ -249,10 +340,22 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
           last_login_date: userStats.lastLoginDate,
           shield_active: userStats.shieldActive,
           optimization_mode: userStats.optimizationMode,
-          language: userStats.language
+          language: userStats.language,
+          device_id: userStats.deviceId
         });
 
-        const mappedExpenses = expenses.map(e => ({ ...e, user_id: session.user.id }));
+        const mappedExpenses = expenses.map(e => ({ 
+          id: e.id,
+          user_id: session.user.id,
+          date: e.date,
+          value: e.value,
+          description: e.description,
+          category: e.category,
+          account: e.account,
+          status: e.status,
+          payment_method: e.paymentMethod,
+          installments: e.installments
+        }));
         if (mappedExpenses.length > 0) await supabase.from('expenses').upsert(mappedExpenses);
 
         const mappedIncomes = incomes.map(i => ({ ...i, user_id: session.user.id }));
@@ -287,6 +390,16 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
           favorite: q.favorite
         }));
         if (mappedQuests.length > 0) await supabase.from('quests').upsert(mappedQuests);
+
+        const mappedCards = creditCards.map(c => ({
+          id: c.id,
+          user_id: session.user.id,
+          name: c.name,
+          limit_value: c.limit,
+          closing_day: c.closingDay,
+          due_day: c.dueDay
+        }));
+        if (mappedCards.length > 0) await supabase.from('credit_cards').upsert(mappedCards);
       } catch (error) {
         console.error('Error saving data to Supabase:', error);
       }
@@ -297,7 +410,7 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
     }, 2000);
 
     return () => clearTimeout(timeoutId);
-  }, [userStats, expenses, incomes, majorGoals, quests, session, isLoaded]);
+  }, [userStats, expenses, incomes, majorGoals, quests, creditCards, session, isLoaded]);
 
   const checkStreak = (stats: UserStats) => {
     const today = new Date().toISOString().split('T')[0];
@@ -360,7 +473,7 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
   };
 
   const addExpense = (expense: Omit<Expense, 'id'>) => {
-    const newExpense = { ...expense, id: Date.now().toString() };
+    const newExpense = { ...expense, id: crypto.randomUUID() };
     setExpenses(prev => [newExpense, ...prev]);
     
     // Gamification hook: Logging expense
@@ -379,8 +492,15 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
     addChatMessage({ role: 'ai', content: message });
   };
 
+  const removeExpense = async (id: string) => {
+    setExpenses(prev => prev.filter(e => e.id !== id));
+    if (session?.user?.id) {
+      await supabase.from('expenses').delete().eq('id', id);
+    }
+  };
+
   const addIncome = (income: Omit<Income, 'id'>) => {
-    const newIncome = { ...income, id: Date.now().toString() };
+    const newIncome = { ...income, id: crypto.randomUUID() };
     setIncomes(prev => [newIncome, ...prev]);
     
     const lang = userStats.language || 'pt';
@@ -448,7 +568,7 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
   };
 
   const addQuest = (quest: Omit<Quest, 'id'>) => {
-    const newQuest = { ...quest, id: Date.now().toString() };
+    const newQuest = { ...quest, id: crypto.randomUUID() };
     setQuests(prev => [newQuest, ...prev]);
     const lang = userStats.language || 'pt';
     const t = (translations as any)[lang] || translations.pt;
@@ -462,10 +582,22 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
   const addChatMessage = (message: Omit<ChatMessage, 'id' | 'timestamp'>) => {
     const newMessage: ChatMessage = {
       ...message,
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       timestamp: new Date().toISOString()
     };
     setChatHistory(prev => [...prev, newMessage]);
+  };
+
+  const addCreditCard = (card: Omit<CreditCard, 'id'>) => {
+    const newCard = { ...card, id: crypto.randomUUID() };
+    setCreditCards(prev => [...prev, newCard]);
+  };
+
+  const removeCreditCard = async (id: string) => {
+    setCreditCards(prev => prev.filter(c => c.id !== id));
+    if (session?.user?.id) {
+      await supabase.from('credit_cards').delete().eq('id', id);
+    }
   };
 
   const toggleOptimizationMode = () => {
@@ -488,14 +620,15 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
       setIncomes(initialIncomes);
       setMajorGoals(initialGoals);
       setQuests(initialQuests);
+      setCreditCards(initialCreditCards);
       setChatHistory(initialChat);
     }
   };
 
   return (
     <StoreContext.Provider value={{
-      userStats, expenses, incomes, majorGoals, quests, chatHistory,
-      addExpense, addIncome, payGoalStep, completeQuest, addQuest, toggleQuestFavorite, addChatMessage, addXp, toggleOptimizationMode, changeLanguage, updateName, clearData, signOut, session
+      userStats, expenses, incomes, majorGoals, quests, chatHistory, creditCards,
+      addExpense, removeExpense, addIncome, payGoalStep, completeQuest, addQuest, toggleQuestFavorite, addChatMessage, addCreditCard, removeCreditCard, addXp, toggleOptimizationMode, changeLanguage, updateName, clearData, signOut, session
     }}>
       {children}
     </StoreContext.Provider>
