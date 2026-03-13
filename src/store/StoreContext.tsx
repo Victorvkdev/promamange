@@ -14,6 +14,7 @@ interface StoreContextType {
   updateExpense: (id: string, expense: Partial<Expense>) => void;
   removeExpense: (id: string) => void;
   copyExpense: (id: string) => void;
+  toggleExpenseFavorite: (id: string) => void;
   addIncome: (income: Omit<Income, 'id'>) => void;
   payGoalStep: (goalId: string, amount?: number) => void;
   updateMajorGoal: (id: string, goal: Partial<MajorGoal>) => void;
@@ -25,7 +26,7 @@ interface StoreContextType {
   removeQuest: (id: string) => void;
   toggleQuestFavorite: (questId: string) => void;
   addChatMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
-  addCreditCard: (card: Omit<CreditCard, 'id'>) => void;
+  addCreditCard: (card: Omit<CreditCard, 'id'>) => string;
   updateCreditCard: (id: string, card: Partial<CreditCard>) => void;
   removeCreditCard: (id: string) => void;
   payCreditCardInvoice: (id: string, amount: number) => void;
@@ -238,7 +239,8 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
             status: e.status,
             paymentMethod: e.payment_method,
             installments: e.installments,
-            cardId: e.card_id
+            cardId: e.card_id,
+            favorite: e.favorite
           })));
         }
 
@@ -371,7 +373,8 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
           status: e.status,
           payment_method: e.paymentMethod,
           installments: e.installments,
-          card_id: e.cardId
+          card_id: e.cardId,
+          favorite: e.favorite || false
         }));
         if (mappedExpenses.length > 0) await supabase.from('expenses').upsert(mappedExpenses);
 
@@ -498,6 +501,13 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
     const newExpense = { ...expense, id: crypto.randomUUID() };
     setExpenses(prev => [newExpense, ...prev]);
     
+    // Update credit card used limit if applicable
+    if (expense.paymentMethod === 'credit' && expense.cardId) {
+      setCreditCards(prev => prev.map(c => 
+        c.id === expense.cardId ? { ...c, usedLimit: (c.usedLimit || 0) + expense.value } : c
+      ));
+    }
+    
     // Gamification hook: Logging expense
     const today = new Date().toISOString().split('T')[0];
     let xpReward = 10;
@@ -514,18 +524,48 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
     addChatMessage({ role: 'ai', content: message });
   };
 
-  const updateExpense = (id: string, expense: Partial<Expense>) => {
-    setExpenses(prev => prev.map(e => e.id === id ? { ...e, ...expense } : e));
+  const updateExpense = (id: string, updatedExpense: Partial<Expense>) => {
+    const oldExpense = expenses.find(e => e.id === id);
+    if (!oldExpense) return;
+
+    // Handle credit card limit adjustments
+    if (oldExpense.paymentMethod === 'credit' && oldExpense.cardId) {
+      setCreditCards(prev => prev.map(c => 
+        c.id === oldExpense.cardId ? { ...c, usedLimit: Math.max(0, (c.usedLimit || 0) - oldExpense.value) } : c
+      ));
+    }
+
+    const newExpense = { ...oldExpense, ...updatedExpense };
+
+    if (newExpense.paymentMethod === 'credit' && newExpense.cardId) {
+      setCreditCards(prev => prev.map(c => 
+        c.id === newExpense.cardId ? { ...c, usedLimit: (c.usedLimit || 0) + newExpense.value } : c
+      ));
+    }
+
+    setExpenses(prev => prev.map(e => e.id === id ? newExpense : e));
   };
 
   const copyExpense = (id: string) => {
     const expenseToCopy = expenses.find(e => e.id === id);
     if (expenseToCopy) {
-      addExpense({ ...expenseToCopy, date: new Date().toISOString().split('T')[0] });
+      const { id: _, favorite, ...expenseData } = expenseToCopy;
+      addExpense({ ...expenseData, date: new Date().toISOString().split('T')[0] });
     }
   };
 
+  const toggleExpenseFavorite = (id: string) => {
+    setExpenses(prev => prev.map(e => e.id === id ? { ...e, favorite: !e.favorite } : e));
+  };
+
   const removeExpense = async (id: string) => {
+    const expenseToRemove = expenses.find(e => e.id === id);
+    if (expenseToRemove && expenseToRemove.paymentMethod === 'credit' && expenseToRemove.cardId) {
+      setCreditCards(prev => prev.map(c => 
+        c.id === expenseToRemove.cardId ? { ...c, usedLimit: Math.max(0, (c.usedLimit || 0) - expenseToRemove.value) } : c
+      ));
+    }
+
     setExpenses(prev => prev.filter(e => e.id !== id));
     if (session?.user?.id) {
       await supabase.from('expenses').delete().eq('id', id);
@@ -654,6 +694,7 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
   const addCreditCard = (card: Omit<CreditCard, 'id'>) => {
     const newCard = { ...card, id: crypto.randomUUID() };
     setCreditCards(prev => [...prev, newCard]);
+    return newCard.id;
   };
 
   const updateCreditCard = (id: string, card: Partial<CreditCard>) => {
@@ -724,7 +765,7 @@ export const StoreProvider = ({ children, session }: { children: ReactNode, sess
   return (
     <StoreContext.Provider value={{
       userStats, expenses, incomes, majorGoals, quests, chatHistory, creditCards,
-      addExpense, updateExpense, removeExpense, copyExpense, addIncome, payGoalStep, updateMajorGoal, removeMajorGoal, addMajorGoal, completeQuest, addQuest, updateQuest, removeQuest, toggleQuestFavorite, addChatMessage, addCreditCard, updateCreditCard, removeCreditCard, payCreditCardInvoice, addXp, toggleOptimizationMode, changeLanguage, updateName, updateAvatar, clearData, signOut, session
+      addExpense, updateExpense, removeExpense, copyExpense, toggleExpenseFavorite, addIncome, payGoalStep, updateMajorGoal, removeMajorGoal, addMajorGoal, completeQuest, addQuest, updateQuest, removeQuest, toggleQuestFavorite, addChatMessage, addCreditCard, updateCreditCard, removeCreditCard, payCreditCardInvoice, addXp, toggleOptimizationMode, changeLanguage, updateName, updateAvatar, clearData, signOut, session
     }}>
       {children}
     </StoreContext.Provider>

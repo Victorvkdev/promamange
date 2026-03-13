@@ -32,6 +32,7 @@ export interface Expense {
   paymentMethod?: 'credit' | 'debit' | 'cash';
   installments?: number;
   cardId?: string;
+  favorite?: boolean;
 }
 
 export interface CreditCard {
